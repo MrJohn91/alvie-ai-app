@@ -1,1 +1,12 @@
-
+streamlit
+openai
+fastapi
+pymongo
+faiss-cpu
+boto3
+pydantic
+python-dotenv
+fitz
+langchain-community
+langchain-openai
+PyMuPDF
