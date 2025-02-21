@@ -3,7 +3,7 @@ import os
 import uuid
 import pymongo
 import faiss  
-from dotenv import load_dotenv
+import requests 
 import datetime
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
@@ -11,19 +11,17 @@ from langchain.docstore.document import Document
 from langchain_community.docstore.in_memory import InMemoryDocstore  
 from openai import OpenAI  
 
-#  Load API Keys from Streamlit Secrets
+# Load API Keys from Streamlit Secrets
 openai_client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# MongoDB Connection with SSL Fix & Error Handling
+# MongoDB Connection with Error Handling
 try:
     client = pymongo.MongoClient(
         st.secrets["MONGO_URL"],  
         tls=True,  
         tlsAllowInvalidCertificates=True,  
-        serverSelectionTimeoutMS=50000  
+        serverSelectionTimeoutMS=10000  
     )
-
-    # Select database and collections
     db = client["chat_with_doc"]
     conversationcol = db["chat-history"]
     feedback_col = db["feedback"]
@@ -33,30 +31,48 @@ except pymongo.errors.ServerSelectionTimeoutError:
 # Global FAISS database
 faiss_db = None
 
-#  Session Handling
+# Session Handling
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
-# Load FAISS Index
+# Function to Download FAISS Index from GitHub
+def download_faiss_from_github():
+    """Fetches the latest FAISS index from GitHub and saves it locally."""
+    try:
+        github_url = "https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/YOUR_REPO/main/faiss_index.bin"
+        response = requests.get(github_url)
+        if response.status_code == 200:
+            with open("faiss_index.bin", "wb") as file:
+                file.write(response.content)
+            return True
+        else:
+            st.error("Failed to fetch FAISS index from GitHub.")
+            return False
+    except Exception as e:
+        st.error(f"Error downloading FAISS index: {e}")
+        return False
+
+# Function to Load FAISS Index
 def load_faiss_index():
     """Loads the FAISS index from a file and initializes FAISS database."""
     global faiss_db
     try:
         if not os.path.exists("faiss_index.bin"):
-            st.warning("❌ FAISS index file not found. Please process a PDF first.")
-            return False
+            if not download_faiss_from_github():
+                st.error("FAISS index not found and could not be downloaded.")
+                return False
 
         # Load FAISS index
         index = faiss.read_index("faiss_index.bin")
         embeddings = OpenAIEmbeddings()
 
-        # Initialize the docstore and index_to_docstore_id
-        documents = [Document(page_content="dummy")]  
+        # Corrected FAISS embedding function call
+        documents = [Document(page_content="dummy")]
         docstore = InMemoryDocstore({str(i): doc for i, doc in enumerate(documents)})
         index_to_docstore_id = {str(i): str(i) for i in range(len(documents))}
 
         faiss_db = FAISS(
-            embedding_function=embeddings,  # Pass the OpenAIEmbeddings object
+            embedding_function=embeddings.embed_query, 
             index=index,
             docstore=docstore,
             index_to_docstore_id=index_to_docstore_id
@@ -64,10 +80,10 @@ def load_faiss_index():
 
         return True
     except Exception as e:
-        st.error(f"❌ Failed to load FAISS index: {e}")
+        st.error(f"Failed to load FAISS index: {e}")
         return False
 
-# Function to get AI response using OpenAI API
+# Function to Get AI Response from OpenAI API
 def get_openai_response(context, user_input):
     """Fetches AI response using OpenAI API."""
     try:
@@ -78,66 +94,26 @@ def get_openai_response(context, user_input):
                 {"role": "user", "content": f"Context: {context}\n\nQuestion: {user_input}"}
             ]
         )
-        ai_response = response.choices[0].message.content  
-        return ai_response
-    except Exception as e:
-        st.error(f"❌ OpenAI API Error: {e}")
-        return None
+        return response.choices[0].message.content  
+    except Exception:
+        return "OpenAI API Error."
 
-#  Streamlit UI
+# Streamlit UI
 def main():
     st.set_page_config(page_title="ALVIE - Chat Assistant", page_icon="👨‍⚕️", layout="centered")
-
-    # Improved Chat UI Styling
-    st.markdown("""
-        <style>
-            body { background-color: #f8f9fa; }
-            .stApp { max-width: 700px; margin: auto; }
-            h1 { color: #4CAF50; text-align: center; }
-
-            /* Chat bubbles styling */
-            .user-message { 
-                background-color: #0084FF;  
-                color: white; 
-                padding: 12px; 
-                border-radius: 15px; 
-                margin-bottom: 8px; 
-                font-size: 16px;
-                width: fit-content;
-                max-width: 80%;
-                text-align: right;
-                margin-left: auto;
-                box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
-            }
-            .bot-message { 
-                background-color: #E8E8E8;  
-                color: black;
-                padding: 12px; 
-                border-radius: 15px; 
-                margin-bottom: 8px; 
-                font-size: 16px;
-                width: fit-content;
-                max-width: 80%;
-                text-align: left;
-                margin-right: auto;
-                box-shadow: 2px 2px 10px rgba(0,0,0,0.2);
-            }
-            .chat-container { margin-top: 20px; }
-        </style>
-    """, unsafe_allow_html=True)
 
     st.title("👨‍⚕️ ALVIE - Chat Assistant")
     st.markdown("_Your personal assistant_")
 
-    #  Load FAISS Index Automatically
+    # Load FAISS Index Automatically
     if "faiss_loaded" not in st.session_state:
         st.session_state.faiss_loaded = load_faiss_index()
 
-    #  Show Chat History
+    # Show Chat History
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
-    # Chat Interface
+    #  Chat Interface
     user_input = st.text_input("💬 Talk to ALVIE:", placeholder="Type your message here...")
 
     if st.button("Send"):
@@ -171,13 +147,10 @@ def main():
     #  Display Chat History
     st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
     for sender, message in st.session_state.chat_history:
-        if sender == "You":
-            st.markdown(f"<div class='user-message'><strong>{sender}:</strong> {message}</div>", unsafe_allow_html=True)
-        else:
-            st.markdown(f"<div class='bot-message'><strong>{sender}:</strong> {message}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='{'user-message' if sender == 'You' else 'bot-message'}'><strong>{sender}:</strong> {message}</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # User Rating Feedback
+    #  User Rating Feedback
     if st.session_state.chat_history:
         st.header("📝 Rate the Response")
         rating = st.radio("How satisfied are you with ALVIE's response?", ["⭐", "⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐⭐"])
