@@ -47,7 +47,7 @@ def download_faiss_index():
 
 # ✅ Function to Load FAISS Index and Store in `st.session_state`
 def load_faiss_index():
-    """Loads FAISS index from a file after downloading from GitHub and stores it in session state."""
+    """Loads FAISS index from a file after downloading from GitHub and ensures index-to-docstore mapping."""
     if not os.path.exists("faiss_index.bin"):
         if not download_faiss_index():
             st.error("❌ Failed to download FAISS index. Please check GitHub repo.")
@@ -56,14 +56,18 @@ def load_faiss_index():
     try:
         index = faiss.read_index("faiss_index.bin")
         embeddings = OpenAIEmbeddings()
-        docstore = InMemoryDocstore({})
 
-        # ✅ Store FAISS in session state
+        # ✅ Ensure FAISS has a valid document store mapping
+        documents = [Document(page_content=f"Document {i}") for i in range(index.ntotal)]
+        docstore = InMemoryDocstore({str(i): doc for i, doc in enumerate(documents)})
+        index_to_docstore_id = {i: str(i) for i in range(index.ntotal)}
+
+        # ✅ Store FAISS in session state with correct mapping
         st.session_state["faiss_db"] = FAISS(
             embedding_function=embeddings.embed_query,
             index=index,
             docstore=docstore,
-            index_to_docstore_id={}
+            index_to_docstore_id=index_to_docstore_id
         )
         return True
     except Exception:
@@ -160,20 +164,20 @@ def main():
                     st.session_state.chat_history.append(("You", user_input))
                     st.session_state.chat_history.append(("Alvie", ai_response))
 
-                    # Store conversation in MongoDB
+                    # ✅ Store conversation in MongoDB
                     conversationcol.update_one(
                         {"session_id": st.session_state.session_id},
                         {"$push": {"conversation": [user_input, ai_response]}},
                         upsert=True
                     )
 
-    #  Display Chat History
+    # ✅ Display Chat History
     st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
     for sender, message in st.session_state.chat_history:
         st.markdown(f"<div class='{'user-message' if sender == 'You' else 'bot-message'}'><strong>{sender}:</strong> {message}</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # User Rating Feedback
+    # ✅ User Rating Feedback
     if st.session_state.chat_history:
         st.header("📝 Rate the Response")
         rating = st.radio("How satisfied are you with ALVIE's response?", ["⭐", "⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐⭐"])
