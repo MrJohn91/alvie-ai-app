@@ -129,7 +129,7 @@ def main():
     """, unsafe_allow_html=True)
 
     st.title("👨‍⚕️ ALVIE - Chat Assistant")
-    st.markdown("_Your personal AI assistant for mental health support_")
+    st.markdown("_Your personal assistant")
 
     # Load FAISS Index Automatically
     if "faiss_loaded" not in st.session_state:
