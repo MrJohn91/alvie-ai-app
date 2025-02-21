@@ -122,7 +122,7 @@ def main():
 
         if user_input:
             with st.spinner("Thinking..."):
-                context = "\n".join([doc.page_content for doc in faiss_db.similarity_search(user_input, k=3)]) if faiss_db else "No relevant context found."
+                context = "\n".join([doc.page_content for doc in faiss_db.similarity_search(user_input, k=5)]) if faiss_db else "No relevant context found."
                 ai_response = get_openai_response(context, user_input)
 
                 if ai_response:
@@ -156,3 +156,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+if retrieved_docs:
+    st.write("Top FAISS Retrieved Docs:", [doc.page_content for doc in retrieved_docs])
+else:
+    st.write("FAISS Retrieval Failed! No relevant context found.")
