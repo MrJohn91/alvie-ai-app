@@ -11,7 +11,7 @@ from langchain.docstore.document import Document
 from langchain_community.docstore.in_memory import InMemoryDocstore  
 from openai import OpenAI  
 
-#  Load API Keys from Streamlit Secrets
+# Load API Keys from Streamlit Secrets
 openai_client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # MongoDB Connection with Error Handling
@@ -25,7 +25,7 @@ try:
 except pymongo.errors.ServerSelectionTimeoutError:
     st.error("Could not connect to MongoDB.")
 
-# Global FAISS database
+#  Global FAISS database
 faiss_db = None
 
 # Session Handling
@@ -61,6 +61,46 @@ def get_openai_response(context, user_input):
 def main():
     st.set_page_config(page_title="ALVIE - Chat Assistant", page_icon="👨‍⚕️", layout="centered")
 
+    # Custom Styling for Correct Chat UI
+    st.markdown("""
+        <style>
+            .stApp { max-width: 700px; margin: auto; }
+            h1 { color: #4CAF50; text-align: center; }
+
+            /* User (blue, right-aligned) */
+            .user-message { 
+                background-color: #0084FF;  
+                color: white; 
+                padding: 12px; 
+                border-radius: 15px; 
+                margin-bottom: 8px; 
+                font-size: 16px;
+                width: fit-content;
+                max-width: 80%;
+                text-align: right;
+                margin-left: auto;
+                box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
+            }
+
+            /* Alvie (white, left-aligned) */
+            .bot-message { 
+                background-color: #E8E8E8;  
+                color: black;
+                padding: 12px; 
+                border-radius: 15px; 
+                margin-bottom: 8px; 
+                font-size: 16px;
+                width: fit-content;
+                max-width: 80%;
+                text-align: left;
+                margin-right: auto;
+                box-shadow: 2px 2px 10px rgba(0,0,0,0.2);
+            }
+
+            .chat-container { margin-top: 20px; }
+        </style>
+    """, unsafe_allow_html=True)
+
     st.title("👨‍⚕️ ALVIE - Chat Assistant")
     st.markdown("_Your personal assistant_")
 
@@ -77,7 +117,7 @@ def main():
 
     if st.button("Send"):
         if not st.session_state.faiss_loaded:
-            st.warning("❌ Please process a PDF first.")
+            st.warning("Please process a PDF first.")
             return
 
         if user_input:
@@ -89,7 +129,7 @@ def main():
                     st.session_state.chat_history.append(("You", user_input))
                     st.session_state.chat_history.append(("Alvie", ai_response))
 
-                    # Store conversation in MongoDB
+                    # ✅ Store conversation in MongoDB
                     conversationcol.update_one(
                         {"session_id": st.session_state.session_id},
                         {"$push": {"conversation": [user_input, ai_response]}},
@@ -99,7 +139,10 @@ def main():
     # Display Chat History
     st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
     for sender, message in st.session_state.chat_history:
-        st.markdown(f"<div class='{'user-message' if sender == 'You' else 'bot-message'}'><strong>{sender}:</strong> {message}</div>", unsafe_allow_html=True)
+        if sender == "You":
+            st.markdown(f"<div class='user-message'><strong>{sender}:</strong> {message}</div>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div class='bot-message'><strong>Alvie:</strong> {message}</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     # User Rating Feedback
