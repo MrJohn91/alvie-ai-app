@@ -1,5 +1,5 @@
 streamlit
-openai>=1.0.0
+openai
 fastapi
 pymongo
 faiss-cpu
