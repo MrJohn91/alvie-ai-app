@@ -1,6 +1,5 @@
 import streamlit as st
 import os
-import openai
 import uuid
 import pymongo
 import faiss  
@@ -9,19 +8,19 @@ import datetime
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain.docstore.document import Document
-from langchain_community.docstore.in_memory import InMemoryDocstore  # Updated import
-from openai import OpenAI  # Correct OpenAI API usage
+from langchain_community.docstore.in_memory import InMemoryDocstore  
+from openai import OpenAI  
 
-# Securely Load API Keys from Streamlit Secrets
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+#  Load API Keys from Streamlit Secrets
+openai_client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # MongoDB Connection with SSL Fix & Error Handling
 try:
     client = pymongo.MongoClient(
-        st.secrets["MONGO_URL"],  # Load from Streamlit Secrets
-        tls=True,  # Use TLS (SSL) for secure connection
-        tlsAllowInvalidCertificates=True,  # Bypass SSL certificate verification
-        serverSelectionTimeoutMS=50000  # Increase timeout to 50 seconds
+        st.secrets["MONGO_URL"],  
+        tls=True,  
+        tlsAllowInvalidCertificates=True,  
+        serverSelectionTimeoutMS=50000  
     )
 
     # Select database and collections
@@ -34,7 +33,7 @@ except pymongo.errors.ServerSelectionTimeoutError:
 # Global FAISS database
 faiss_db = None
 
-# Session Handling (Unique Session ID for Users)
+#  Session Handling
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
@@ -52,12 +51,12 @@ def load_faiss_index():
         embeddings = OpenAIEmbeddings()
 
         # Initialize the docstore and index_to_docstore_id
-        documents = [Document(page_content="dummy")]  # Dummy document to initialize
+        documents = [Document(page_content="dummy")]  
         docstore = InMemoryDocstore({str(i): doc for i, doc in enumerate(documents)})
         index_to_docstore_id = {str(i): str(i) for i in range(len(documents))}
 
         faiss_db = FAISS(
-            embedding_function=embeddings,  # Pass the OpenAIEmbeddings object, not just a function
+            embedding_function=embeddings,  # Pass the OpenAIEmbeddings object
             index=index,
             docstore=docstore,
             index_to_docstore_id=index_to_docstore_id
@@ -72,25 +71,24 @@ def load_faiss_index():
 def get_openai_response(context, user_input):
     """Fetches AI response using OpenAI API."""
     try:
-        # Ensure that you're using the latest OpenAI API
-        response = openai.ChatCompletion.create(  # Correct usage for OpenAI API >= 1.0.0
+        response = openai_client.chat.completions.create(  
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": f"Context: {context}\n\nQuestion: {user_input}"}
             ]
         )
-        ai_response = response['choices'][0]['message']['content']  # Access the correct content
+        ai_response = response.choices[0].message.content  
         return ai_response
     except Exception as e:
         st.error(f"❌ OpenAI API Error: {e}")
         return None
 
-# Streamlit UI
+#  Streamlit UI
 def main():
     st.set_page_config(page_title="ALVIE - Chat Assistant", page_icon="👨‍⚕️", layout="centered")
 
-    # Custom Styling for Improved Chat UI
+    # Improved Chat UI Styling
     st.markdown("""
         <style>
             body { background-color: #f8f9fa; }
@@ -99,7 +97,7 @@ def main():
 
             /* Chat bubbles styling */
             .user-message { 
-                background-color: #0084FF;  /* Messenger Blue */
+                background-color: #0084FF;  
                 color: white; 
                 padding: 12px; 
                 border-radius: 15px; 
@@ -112,7 +110,7 @@ def main():
                 box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
             }
             .bot-message { 
-                background-color: #E8E8E8;  /* Light Gray */
+                background-color: #E8E8E8;  
                 color: black;
                 padding: 12px; 
                 border-radius: 15px; 
@@ -131,11 +129,11 @@ def main():
     st.title("👨‍⚕️ ALVIE - Chat Assistant")
     st.markdown("_Your personal assistant_")
 
-    # Load FAISS Index Automatically
+    #  Load FAISS Index Automatically
     if "faiss_loaded" not in st.session_state:
         st.session_state.faiss_loaded = load_faiss_index()
 
-    # Show Chat History
+    #  Show Chat History
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
@@ -159,7 +157,7 @@ def main():
                 ai_response = get_openai_response(context, user_input)
 
                 if ai_response:
-                    # Store chat in history
+                    #  Store chat in history
                     st.session_state.chat_history.append(("You", user_input))
                     st.session_state.chat_history.append(("ALVIE", ai_response))
 
@@ -170,7 +168,7 @@ def main():
                         upsert=True
                     )
 
-    # Display Chat History
+    #  Display Chat History
     st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
     for sender, message in st.session_state.chat_history:
         if sender == "You":
