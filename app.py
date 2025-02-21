@@ -3,22 +3,25 @@ import os
 import openai
 import uuid
 import pymongo
-import faiss  # Ensure FAISS is imported
-from dotenv import load_dotenv
+import faiss  
+import ssl  # for MongoDB SSL fix
+import datetime
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain.docstore.document import Document
 from langchain.docstore import InMemoryDocstore
-import datetime
 
-# Load environment variables from .env file
-load_dotenv()
+#  Load API Keys from Streamlit Secrets
+openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# Set OpenAI API Key
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# MongoDB Connection with SSL Fix
+client = pymongo.MongoClient(
+    st.secrets["MONGO_URL"],  # Load from Streamlit Secrets
+    ssl_cert_reqs=ssl.CERT_NONE,  # Bypass SSL certificate errors
+    serverSelectionTimeoutMS=50000  # Increase timeout to 50 seconds
+)
 
-# MongoDB setup
-client = pymongo.MongoClient(os.getenv("MONGO_URL"))
+# Select Database and Collections
 db = client["chat_with_doc"]
 conversationcol = db["chat-history"]
 feedback_col = db["feedback"]
@@ -26,7 +29,7 @@ feedback_col = db["feedback"]
 # Global FAISS database
 faiss_db = None
 
-# Session handling
+#  Session Handling (Unique Session ID for Users)
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
@@ -60,7 +63,7 @@ def load_faiss_index():
         st.error(f"❌ Failed to load FAISS index: {e}")
         return False
 
-# Function to get AI response
+# Function to Get AI Response
 def get_openai_response(context, user_input):
     """Fetches AI response using OpenAI API."""
     try:
@@ -122,18 +125,18 @@ def main():
     """, unsafe_allow_html=True)
 
     st.title("👨‍⚕️ ALVIE - Chat Assistant")
-    st.markdown("_Your personal Assistant_")
+    st.markdown("_Your personal AI assistant for mental health support_")
 
-    # Load FAISS index automatically
+    # Load FAISS Index Automatically
     if "faiss_loaded" not in st.session_state:
         st.session_state.faiss_loaded = load_faiss_index()
 
-    # Show chat history
+    # Show Chat History
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
     # Chat Interface
-    user_input = st.text_input("💬 Talk to ALVIE:", placeholder="Type here...")
+    user_input = st.text_input("💬 Talk to ALVIE:", placeholder="Type your message here...")
 
     if st.button("Send"):
         if not st.session_state.faiss_loaded:
@@ -163,7 +166,7 @@ def main():
                         upsert=True
                     )
 
-    # Display chat history
+    # Display Chat History
     st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
     for sender, message in st.session_state.chat_history:
         if sender == "You":
