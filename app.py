@@ -11,10 +11,10 @@ from langchain.docstore.document import Document
 from langchain_community.docstore.in_memory import InMemoryDocstore  
 from openai import OpenAI  
 
-# Load API Keys from Streamlit Secrets
+# ✅ Load API Keys from Streamlit Secrets
 openai_client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# MongoDB Connection with Error Handling
+# ✅ MongoDB Connection with Error Handling
 try:
     client = pymongo.MongoClient(
         st.secrets["MONGO_URL"], tls=True, tlsAllowInvalidCertificates=True, serverSelectionTimeoutMS=10000
@@ -23,20 +23,20 @@ try:
     conversationcol = db["chat-history"]
     feedback_col = db["feedback"]
 except pymongo.errors.ServerSelectionTimeoutError:
-    st.error("Could not connect to MongoDB.")
+    st.error("❌ Could not connect to MongoDB.")
 
-# Global FAISS database
+# ✅ Global FAISS database
 faiss_db = None
 
-# Session Handling
+# ✅ Session Handling
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
-#  Function to Download FAISS Index from GitHub
+# ✅ Function to Download FAISS Index from GitHub
 def download_faiss_index():
     """Downloads FAISS index from GitHub if not available locally."""
     github_url = "https://raw.githubusercontent.com/MrJohn91/alvie-ai-app/main/faiss_index.bin"
-    
+
     # Check if FAISS file already exists
     if os.path.exists("faiss_index.bin"):
         return True  
@@ -48,11 +48,13 @@ def download_faiss_index():
                 file.write(response.content)
             return True
         else:
+            st.error("❌ Failed to download FAISS index from GitHub.")
             return False
     except Exception as e:
+        st.error(f"❌ Error downloading FAISS index: {e}")
         return False
 
-#  Function to Load FAISS Index
+# ✅ Function to Load FAISS Index
 def load_faiss_index():
     """Loads FAISS index from a file after downloading from GitHub."""
     global faiss_db
@@ -66,16 +68,18 @@ def load_faiss_index():
 
     # Try loading FAISS
     try:
+        st.write("Attempting to load FAISS index...")
         index = faiss.read_index("faiss_index.bin")
         embeddings = OpenAIEmbeddings()
         docstore = InMemoryDocstore({})
         faiss_db = FAISS(embedding_function=embeddings.embed_query, index=index, docstore=docstore, index_to_docstore_id={})
+        st.success("✅ FAISS index loaded successfully!")
         return True
     except Exception as e:
         st.error(f"❌ FAISS Loading Failed: {e}")
         return False
 
-# Function to Get AI Response
+# ✅ Function to Get AI Response
 def get_openai_response(context, user_input):
     try:
         response = openai_client.chat.completions.create(
@@ -87,14 +91,14 @@ def get_openai_response(context, user_input):
         )
         return response.choices[0].message.content  
     except Exception as e:
-        st.error(f"OpenAI API Error: {e}")
+        st.error(f"❌ OpenAI API Error: {e}")
         return "OpenAI API Error."
 
-#  Streamlit UI
+# ✅ Streamlit UI
 def main():
     st.set_page_config(page_title="ALVIE - Chat Assistant", page_icon="👨‍⚕️", layout="centered")
 
-    # Custom Styling for Correct Chat UI
+    # ✅ Custom Styling for Correct Chat UI
     st.markdown("""
         <style>
             .stApp { max-width: 700px; margin: auto; }
@@ -137,15 +141,15 @@ def main():
     st.title("👨‍⚕️ ALVIE - Chat Assistant")
     st.markdown("_Your personal assistant_")
 
-    # ✅Load FAISS Index
+    # ✅ Load FAISS Index
     if "faiss_loaded" not in st.session_state:
         st.session_state.faiss_loaded = load_faiss_index()
 
-    #  Show Chat History
+    # ✅ Show Chat History
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
-    #  Chat Interface
+    # ✅ Chat Interface
     user_input = st.text_input("💬 Talk to ALVIE:", placeholder="Type your message here...")
 
     if st.button("Send"):
@@ -155,12 +159,12 @@ def main():
 
         if user_input:
             with st.spinner("Thinking..."):
-                #  Ensure FAISS is working before searching
+                # ✅ Ensure FAISS is working before searching
                 if not faiss_db:
                     st.error("🚨 FAISS is not initialized! Check index file.")
                     return
                 
-                #  Retrieve context from FAISS
+                # ✅ Retrieve context from FAISS
                 retrieved_docs = faiss_db.similarity_search(user_input, k=5)
                 if retrieved_docs:
                     context = "\n".join([doc.page_content for doc in retrieved_docs])
@@ -168,27 +172,27 @@ def main():
                     context = "No relevant context found."
                     st.warning("⚠️ No relevant FAISS documents found.")
 
-                # Get AI response
+                # ✅ Get AI response
                 ai_response = get_openai_response(context, user_input)
 
                 if ai_response:
                     st.session_state.chat_history.append(("You", user_input))
                     st.session_state.chat_history.append(("Alvie", ai_response))
 
-                    # Store conversation in MongoDB
+                    # ✅ Store conversation in MongoDB
                     conversationcol.update_one(
                         {"session_id": st.session_state.session_id},
                         {"$push": {"conversation": [user_input, ai_response]}},
                         upsert=True
                     )
 
-    # Display Chat History
+    # ✅ Display Chat History
     st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
     for sender, message in st.session_state.chat_history:
         st.markdown(f"<div class='{'user-message' if sender == 'You' else 'bot-message'}'><strong>{sender}:</strong> {message}</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # User Rating Feedback
+    # ✅ User Rating Feedback
     if st.session_state.chat_history:
         st.header("📝 Rate the Response")
         rating = st.radio("How satisfied are you with ALVIE's response?", ["⭐", "⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐⭐"])
