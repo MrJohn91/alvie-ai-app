@@ -3,15 +3,15 @@ import os
 import openai
 import uuid
 import pymongo
-import faiss  
-import ssl  # Required for MongoDB SSl
+import faiss
+import ssl  # Required for MongoDB SSL
 import datetime
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain.docstore.document import Document
 from langchain.docstore import InMemoryDocstore
 
-#  Securely Load API Keys from Streamlit Secrets
+# Securely Load API Keys from Streamlit Secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
 # MongoDB Connection with SSL Fix & Error Handling
@@ -33,7 +33,7 @@ except pymongo.errors.ServerSelectionTimeoutError:
 # Global FAISS database
 faiss_db = None
 
-#  Session Handling (Unique Session ID for Users)
+# Session Handling (Unique Session ID for Users)
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
@@ -67,21 +67,20 @@ def load_faiss_index():
         st.error(f"❌ Failed to load FAISS index: {e}")
         return False
 
-#  Function to Get Response
+# Function to Get Response
 def get_openai_response(context, user_input):
     """Fetches AI response using OpenAI API."""
     try:
-        client = openai.OpenAI()
-
-        response = client.chat.completions.create(
+        # Generate AI Response via OpenAI API Call
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "Use the provided context to answer the user's question."},
+                {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": f"Context: {context}\n\nQuestion: {user_input}"}
             ]
         )
-
-        return response.choices[0].message.content
+        ai_response = response.choices[0].message.content  # Extract response
+        return ai_response
     except Exception as e:
         st.error(f"❌ OpenAI API Error: {e}")
         return None
@@ -129,13 +128,13 @@ def main():
     """, unsafe_allow_html=True)
 
     st.title("👨‍⚕️ ALVIE - Chat Assistant")
-    st.markdown("_Your personal assistant")
+    st.markdown("_Your personal assistant_")
 
     # Load FAISS Index Automatically
     if "faiss_loaded" not in st.session_state:
         st.session_state.faiss_loaded = load_faiss_index()
 
-    #  Show Chat History
+    # Show chat history
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
@@ -152,9 +151,11 @@ def main():
                 # Retrieve relevant context from FAISS
                 if faiss_db:
                     retrieved_docs = faiss_db.similarity_search(user_input, k=3)
+                    st.write(f"Retrieved docs: {retrieved_docs}")  # Debugging output
                     context = "\n".join([doc.page_content for doc in retrieved_docs]) if retrieved_docs else "No relevant context found."
                 else:
                     context = "No relevant context found."
+                st.write(f"Context sent to OpenAI: {context}")  # Debugging output
 
                 ai_response = get_openai_response(context, user_input)
 
@@ -170,7 +171,7 @@ def main():
                         upsert=True
                     )
 
-    #  Display Chat History
+    # Display chat history
     st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
     for sender, message in st.session_state.chat_history:
         if sender == "You":
