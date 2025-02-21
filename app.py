@@ -9,7 +9,7 @@ import datetime
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain.docstore.document import Document
-from langchain.docstore import InMemoryDocstore
+from langchain_community.docstore.in_memory import InMemoryDocstore
 
 # Securely Load API Keys from Streamlit Secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
