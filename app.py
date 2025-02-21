@@ -4,27 +4,31 @@ import openai
 import uuid
 import pymongo
 import faiss  
-import ssl  # for MongoDB SSL fix
+import ssl  # Required for MongoDB SSl
 import datetime
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain.docstore.document import Document
 from langchain.docstore import InMemoryDocstore
 
-#  Load API Keys from Streamlit Secrets
+#  Securely Load API Keys from Streamlit Secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# MongoDB Connection with SSL Fix
-client = pymongo.MongoClient(
-    st.secrets["MONGO_URL"],  # Load from Streamlit Secrets
-    ssl_cert_reqs=ssl.CERT_NONE,  # Bypass SSL certificate errors
-    serverSelectionTimeoutMS=50000  # Increase timeout to 50 seconds
-)
+# MongoDB Connection with SSL Fix & Error Handling
+try:
+    client = pymongo.MongoClient(
+        st.secrets["MONGO_URL"],  # Load from Streamlit Secrets
+        tls=True,  # Use TLS (SSL) for secure connection
+        tlsAllowInvalidCertificates=True,  # Bypass SSL certificate verification
+        serverSelectionTimeoutMS=50000  # Increase timeout to 50 seconds
+    )
 
-# Select Database and Collections
-db = client["chat_with_doc"]
-conversationcol = db["chat-history"]
-feedback_col = db["feedback"]
+    # Select database and collections
+    db = client["chat_with_doc"]
+    conversationcol = db["chat-history"]
+    feedback_col = db["feedback"]
+except pymongo.errors.ServerSelectionTimeoutError:
+    st.error("❌ Could not connect to MongoDB. Please check your database settings.")
 
 # Global FAISS database
 faiss_db = None
@@ -63,7 +67,7 @@ def load_faiss_index():
         st.error(f"❌ Failed to load FAISS index: {e}")
         return False
 
-# Function to Get AI Response
+#  Function to Get Response
 def get_openai_response(context, user_input):
     """Fetches AI response using OpenAI API."""
     try:
@@ -131,7 +135,7 @@ def main():
     if "faiss_loaded" not in st.session_state:
         st.session_state.faiss_loaded = load_faiss_index()
 
-    # Show Chat History
+    #  Show Chat History
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
@@ -166,7 +170,7 @@ def main():
                         upsert=True
                     )
 
-    # Display Chat History
+    #  Display Chat History
     st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
     for sender, message in st.session_state.chat_history:
         if sender == "You":
