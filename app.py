@@ -10,10 +10,10 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_community.docstore.in_memory import InMemoryDocstore
 from openai import OpenAI
 
-# Load API Key from Streamlit Secrets
+# ✅ Load API Key from Streamlit Secrets
 openai_client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# MongoDB Setup
+# ✅ MongoDB Setup
 try:
     client = pymongo.MongoClient(st.secrets["MONGO_URL"], tls=True, tlsAllowInvalidCertificates=True)
     db = client["chat_with_doc"]
@@ -22,15 +22,19 @@ try:
 except pymongo.errors.ServerSelectionTimeoutError:
     st.error("❌ Could not connect to MongoDB.")
 
-# FAISS Database
+# ✅ FAISS Database
 faiss_db = None
 
-# Session Handling
+# ✅ Session Handling (Ensure session attributes exist)
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
-# Function to Download FAISS Index from GitHub
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+# ✅ Function to Download FAISS Index from GitHub
 def download_faiss_index():
+    """Downloads FAISS index from GitHub if not available locally."""
     github_url = "https://raw.githubusercontent.com/MrJohn91/alvie-ai-app/main/faiss_index.bin"
     if not os.path.exists("faiss_index.bin"):
         try:
@@ -46,25 +50,33 @@ def download_faiss_index():
             return False
     return True
 
-# Load FAISS Index
+# ✅ Function to Load FAISS Index
 def load_faiss_index():
+    """Loads the FAISS index from a file after downloading from GitHub."""
     global faiss_db
+
+    # Ensure FAISS index is available
     if not os.path.exists("faiss_index.bin"):
-        st.warning("⚠️ FAISS index not found! Downloading from GitHub...")
         if not download_faiss_index():
             st.error("❌ FAISS index missing. Please check your GitHub repo.")
             return False
+
     try:
         index = faiss.read_index("faiss_index.bin")
         embeddings = OpenAIEmbeddings()
+
+        # ✅ Fix FAISS Initialization: Ensure the docstore and index_to_docstore_id exist
         docstore = InMemoryDocstore({})
-        faiss_db = FAISS(embedding_function=embeddings, index=index, docstore=docstore, index_to_docstore_id={})
+        index_to_docstore_id = {str(i): str(i) for i in range(index.ntotal)}
+
+        faiss_db = FAISS(embedding_function=embeddings, index=index, docstore=docstore, index_to_docstore_id=index_to_docstore_id)
+
         return True
     except Exception as e:
         st.error(f"❌ FAISS Loading Failed: {e}")
         return False
 
-# Get AI Response from OpenAI
+# ✅ Function to Get AI Response from OpenAI
 def get_openai_response(context, user_input):
     try:
         response = openai_client.chat.completions.create(
@@ -78,21 +90,21 @@ def get_openai_response(context, user_input):
     except:
         return "❌ OpenAI API Error."
 
-# Streamlit UI
+# ✅ Streamlit UI
 def main():
     st.set_page_config(page_title="ALVIE - Chat Assistant", page_icon="👨‍⚕️", layout="centered")
     st.title("👨‍⚕️ ALVIE - Chat Assistant")
 
-    # Load FAISS on App Start
+    # ✅ Load FAISS on App Start
     if "faiss_loaded" not in st.session_state:
         st.session_state.faiss_loaded = load_faiss_index()
 
-    # Chat Interface
+    # ✅ Chat Interface
     user_input = st.text_input("💬 Talk to ALVIE:", placeholder="Type here...")
 
     if st.button("Send"):
         if not st.session_state.faiss_loaded:
-            st.warning("❌ Please process a PDF first.")
+            st.warning("❌ FAISS index is missing. Please process a PDF first.")
             return
 
         if user_input:
@@ -115,13 +127,10 @@ def main():
                         upsert=True
                     )
 
-    # Display Chat History
+    # ✅ Display Chat History
     st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
     for sender, message in st.session_state.chat_history:
-        if sender == "You":
-            st.markdown(f"<div class='user-message'><strong>{sender}:</strong> {message}</div>", unsafe_allow_html=True)
-        else:
-            st.markdown(f"<div class='bot-message'><strong>Alvie:</strong> {message}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='{'user-message' if sender == 'You' else 'bot-message'}'><strong>{sender}:</strong> {message}</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
