@@ -57,10 +57,14 @@ def load_faiss_index():
         index = faiss.read_index("faiss_index.bin")
         embeddings = OpenAIEmbeddings()
 
-        # ✅ Ensure FAISS has a valid document store mapping
-        documents = [Document(page_content=f"Document {i}") for i in range(index.ntotal)]
+        # ✅ Ensure FAISS retrieves real document content
+        with open("document_texts.txt", "r", encoding="utf-8") as file:  # Load real extracted text
+            text_data = file.readlines()
+
+        # ✅ Store documents properly
+        documents = [Document(page_content=text.strip()) for text in text_data]
         docstore = InMemoryDocstore({str(i): doc for i, doc in enumerate(documents)})
-        index_to_docstore_id = {i: str(i) for i in range(index.ntotal)}
+        index_to_docstore_id = {i: str(i) for i in range(len(documents))}
 
         # ✅ Store FAISS in session state with correct mapping
         st.session_state["faiss_db"] = FAISS(
@@ -70,8 +74,10 @@ def load_faiss_index():
             index_to_docstore_id=index_to_docstore_id
         )
         return True
-    except Exception:
+    except Exception as e:
+        st.error(f"❌ FAISS Loading Failed: {e}")
         return False
+
 # ✅ Function to Get AI Response
 def get_openai_response(context, user_input):
     try:
@@ -86,10 +92,11 @@ def get_openai_response(context, user_input):
     except Exception:
         return "OpenAI API Error."
 
+# ✅ Streamlit UI
 def main():
     st.set_page_config(page_title="ALVIE - Chat Assistant", page_icon="👨‍⚕️", layout="centered")
 
-    # ✅ Ensure session_id is always initialized
+    # ✅ Ensure session_id is initialized
     if "session_id" not in st.session_state:
         st.session_state.session_id = str(uuid.uuid4())
 
@@ -98,32 +105,8 @@ def main():
         <style>
             .stApp { max-width: 700px; margin: auto; }
             h1 { color: #4CAF50; text-align: center; }
-            .user-message { 
-                background-color: #0084FF;  
-                color: white; 
-                padding: 12px; 
-                border-radius: 15px; 
-                margin-bottom: 8px; 
-                font-size: 16px;
-                width: fit-content;
-                max-width: 80%;
-                text-align: right;
-                margin-left: auto;
-                box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
-            }
-            .bot-message { 
-                background-color: #E8E8E8;  
-                color: black;
-                padding: 12px; 
-                border-radius: 15px; 
-                margin-bottom: 8px; 
-                font-size: 16px;
-                width: fit-content;
-                max-width: 80%;
-                text-align: left;
-                margin-right: auto;
-                box-shadow: 2px 2px 10px rgba(0,0,0,0.2);
-            }
+            .user-message { background-color: #0084FF; color: white; padding: 12px; border-radius: 15px; margin-bottom: 8px; font-size: 16px; width: fit-content; max-width: 80%; text-align: right; margin-left: auto; box-shadow: 2px 2px 10px rgba(0,0,0,0.1); }
+            .bot-message { background-color: #E8E8E8; color: black; padding: 12px; border-radius: 15px; margin-bottom: 8px; font-size: 16px; width: fit-content; max-width: 80%; text-align: left; margin-right: auto; box-shadow: 2px 2px 10px rgba(0,0,0,0.2); }
             .chat-container { margin-top: 20px; }
         </style>
     """, unsafe_allow_html=True)
@@ -152,7 +135,12 @@ def main():
                 # ✅ Retrieve context from FAISS stored in session state
                 faiss_db = st.session_state["faiss_db"]
                 retrieved_docs = faiss_db.similarity_search(user_input, k=5)
-                context = "\n".join([doc.page_content for doc in retrieved_docs]) if retrieved_docs else "No relevant context found."
+
+                # ✅ Fix placeholder issue (replace empty/invalid docs with real content)
+                if retrieved_docs:
+                    context = "\n".join([doc.page_content if "Document" not in doc.page_content else "No relevant information found." for doc in retrieved_docs])
+                else:
+                    context = "No relevant context found."
 
                 # ✅ Get AI response
                 ai_response = get_openai_response(context, user_input)
