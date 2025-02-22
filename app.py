@@ -35,10 +35,10 @@ def download_faiss_index():
             with open("faiss_index.bin", "wb") as file:
                 file.write(response.content)
 
-# ✅ Function to Load FAISS Index and Store in `st.session_state`
+# ✅ Function to Load FAISS Index Correctly
 def load_faiss_index():
     if "faiss_db" in st.session_state:
-        return True  # FAISS is already loaded
+        return st.session_state.faiss_db  # ✅ Return FAISS object if already loaded
 
     if not os.path.exists("faiss_index.bin"):
         download_faiss_index()
@@ -47,22 +47,27 @@ def load_faiss_index():
         index = faiss.read_index("faiss_index.bin")
         embeddings = OpenAIEmbeddings()
         docstore = InMemoryDocstore({})
-        st.session_state.faiss_db = FAISS(
+        faiss_db = FAISS(
             embedding_function=embeddings.embed_query, 
             index=index, 
             docstore=docstore, 
             index_to_docstore_id={}
         )
-        return True
-    except:
-        return False
+        st.session_state.faiss_db = faiss_db  # ✅ Store FAISS object properly
+        return faiss_db  # ✅ Return FAISS object
+    except Exception as e:
+        st.error(f"❌ FAISS Loading Failed: {e}")
+        return None
 
 # ✅ Function to Get AI Response
 def get_openai_response(context, user_input):
     try:
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": f"Context: {context}\n\nQuestion: {user_input}"}]
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."}, 
+                {"role": "user", "content": f"Context: {context}\n\nQuestion: {user_input}"}
+            ]
         )
         return response.choices[0].message.content
     except:
@@ -75,7 +80,7 @@ def main():
     st.title("👨‍⚕️ ALVIE - Chat Assistant")
     st.markdown("_Your personal assistant_")
 
-    # ✅ Load FAISS Index
+    # ✅ Load FAISS Index Correctly
     if "faiss_db" not in st.session_state:
         st.session_state.faiss_db = load_faiss_index()
 
@@ -87,13 +92,15 @@ def main():
     user_input = st.text_input("💬 Talk to ALVIE:", placeholder="Type your message here...")
 
     if st.button("Send"):
-        if "faiss_db" not in st.session_state or not st.session_state.faiss_db:
+        faiss_db = st.session_state.faiss_db  # ✅ Get FAISS object
+
+        if not faiss_db:
             st.warning("❌ FAISS is not initialized! Check index file.")
             return
 
         if user_input:
             with st.spinner("Thinking..."):
-                retrieved_docs = st.session_state.faiss_db.similarity_search(user_input, k=3)
+                retrieved_docs = faiss_db.similarity_search(user_input, k=3)
                 context = "\n".join([doc.page_content for doc in retrieved_docs]) if retrieved_docs else "No relevant context found."
 
                 ai_response = get_openai_response(context, user_input)
