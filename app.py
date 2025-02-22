@@ -13,7 +13,7 @@ from openai import OpenAI
 # ✅ Load API Keys from Streamlit Secrets
 openai_client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# ✅ Initialize session state
+# ✅ Ensure session state is initialized at the start of the script
 st.session_state.setdefault("session_id", str(uuid.uuid4()))
 st.session_state.setdefault("chat_history", [])
 
@@ -114,7 +114,7 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    st.title("🤖 ALVIE - Chat Assistant")
+    st.title("👨‍⚕️ ALVIE - Chat Assistant")
     st.markdown("_Your personal assistant_")
 
     # ✅ Load FAISS index if not loaded
