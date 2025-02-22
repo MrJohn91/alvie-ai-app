@@ -37,6 +37,7 @@ def download_faiss_index():
 
 # ✅ Function to Load FAISS Index Correctly
 def load_faiss_index():
+    """Ensures FAISS has a proper docstore to avoid KeyError."""
     if "faiss_db" in st.session_state:
         return st.session_state.faiss_db  # ✅ Return FAISS object if already loaded
 
@@ -46,12 +47,17 @@ def load_faiss_index():
     try:
         index = faiss.read_index("faiss_index.bin")
         embeddings = OpenAIEmbeddings()
-        docstore = InMemoryDocstore({})
+        
+        # ✅ Ensure docstore and index mappings are properly initialized
+        documents = [Document(page_content="Placeholder Document")]  
+        docstore = InMemoryDocstore({str(i): doc for i, doc in enumerate(documents)})
+        index_to_docstore_id = {i: str(i) for i in range(len(documents))}  
+
         faiss_db = FAISS(
             embedding_function=embeddings.embed_query, 
             index=index, 
             docstore=docstore, 
-            index_to_docstore_id={}
+            index_to_docstore_id=index_to_docstore_id
         )
         st.session_state.faiss_db = faiss_db  # ✅ Store FAISS object properly
         return faiss_db  # ✅ Return FAISS object
