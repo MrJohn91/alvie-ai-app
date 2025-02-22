@@ -45,10 +45,10 @@ def load_faiss_index():
 
     try:
         index = faiss.read_index("faiss_index.bin")
-        embeddings = OpenAIEmbeddings()
+        embeddings = OpenAIEmbeddings()  # ✅ Use OpenAIEmbeddings object
         docstore = InMemoryDocstore({})
         faiss_db = FAISS(
-            embedding_function=embeddings.embed_query, 
+            embedding_function=embeddings,  # ✅ Pass the embeddings object
             index=index, 
             docstore=docstore, 
             index_to_docstore_id={}
