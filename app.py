@@ -72,7 +72,6 @@ def load_faiss_index():
         return True
     except Exception:
         return False
-
 # ✅ Function to Get AI Response
 def get_openai_response(context, user_input):
     try:
@@ -87,17 +86,18 @@ def get_openai_response(context, user_input):
     except Exception:
         return "OpenAI API Error."
 
-# ✅ Streamlit UI
 def main():
     st.set_page_config(page_title="ALVIE - Chat Assistant", page_icon="👨‍⚕️", layout="centered")
+
+    # ✅ Ensure session_id is always initialized
+    if "session_id" not in st.session_state:
+        st.session_state.session_id = str(uuid.uuid4())
 
     # ✅ Custom Styling for Correct Chat UI
     st.markdown("""
         <style>
             .stApp { max-width: 700px; margin: auto; }
             h1 { color: #4CAF50; text-align: center; }
-
-            /* User (blue, right-aligned) */
             .user-message { 
                 background-color: #0084FF;  
                 color: white; 
@@ -111,8 +111,6 @@ def main():
                 margin-left: auto;
                 box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
             }
-
-            /* Alvie (white, left-aligned) */
             .bot-message { 
                 background-color: #E8E8E8;  
                 color: black;
@@ -126,7 +124,6 @@ def main():
                 margin-right: auto;
                 box-shadow: 2px 2px 10px rgba(0,0,0,0.2);
             }
-
             .chat-container { margin-top: 20px; }
         </style>
     """, unsafe_allow_html=True)
@@ -138,7 +135,7 @@ def main():
     if "faiss_db" not in st.session_state:
         load_faiss_index()
 
-    # ✅ Show Chat History
+    # ✅ Ensure chat history is initialized
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
