@@ -5,10 +5,11 @@ import pymongo
 import faiss
 import requests
 import datetime
+import numpy as np
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.docstore.in_memory import InMemoryDocstore
-from langchain_core.documents import Document  # ✅ Fix Missing Import
+from langchain_core.documents import Document  # ✅ Fix Import
 from openai import OpenAI
 
 # ✅ Load API Keys
@@ -39,7 +40,7 @@ def download_faiss_index():
 
 # ✅ Function to Load FAISS Index Properly
 def load_faiss_index():
-    """Ensures FAISS has a proper docstore to avoid KeyError."""
+    """Loads FAISS index with proper docstore and ID mappings."""
     if "faiss_db" in st.session_state:
         return st.session_state.faiss_db  # ✅ Return FAISS object if already loaded
 
@@ -51,12 +52,14 @@ def load_faiss_index():
         embeddings = OpenAIEmbeddings()
         
         # ✅ Ensure docstore and index mappings are properly initialized
-        documents = [Document(page_content="Placeholder Document")]  
-        docstore = InMemoryDocstore({str(i): doc for i, doc in enumerate(documents)})
-        index_to_docstore_id = {i: str(i) for i in range(len(documents))}  
+        stored_docs = {
+            "0": Document(page_content="This is a placeholder document.")
+        }
+        docstore = InMemoryDocstore(stored_docs)
+        index_to_docstore_id = {0: "0"}  
 
         faiss_db = FAISS(
-            embedding_function=embeddings.embed_query, 
+            embedding_function=embeddings,  # ✅ Fix embedding function issue
             index=index, 
             docstore=docstore, 
             index_to_docstore_id=index_to_docstore_id
@@ -109,7 +112,12 @@ def main():
         if user_input:
             with st.spinner("Thinking..."):
                 retrieved_docs = faiss_db.similarity_search(user_input, k=3)
-                context = "\n".join([doc.page_content for doc in retrieved_docs]) if retrieved_docs else "No relevant context found."
+
+                if retrieved_docs:
+                    context = "\n".join([doc.page_content for doc in retrieved_docs])
+                else:
+                    context = "No relevant context found."
+                    st.warning("⚠️ No relevant FAISS documents found.")
 
                 ai_response = get_openai_response(context, user_input)
 
