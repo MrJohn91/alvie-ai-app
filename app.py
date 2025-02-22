@@ -5,17 +5,15 @@ import pymongo
 import faiss
 import requests
 import datetime
-import numpy as np
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.docstore.in_memory import InMemoryDocstore
-from langchain_core.documents import Document  # ✅ Correct Import
 from openai import OpenAI
 
-# ✅ Load API Keys
+# Load API Key from Streamlit Secrets
 openai_client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# ✅ MongoDB Connection
+# MongoDB Setup
 try:
     client = pymongo.MongoClient(st.secrets["MONGO_URL"], tls=True, tlsAllowInvalidCertificates=True)
     db = client["chat_with_doc"]
@@ -24,80 +22,55 @@ try:
 except pymongo.errors.ServerSelectionTimeoutError:
     st.error("❌ Could not connect to MongoDB.")
 
-# ✅ Session Handling
+# FAISS Database
+faiss_db = None
+
+# Session Handling
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
-# ✅ Download FAISS Index from GitHub
+# Function to Download FAISS Index from GitHub
 def download_faiss_index():
-    """Downloads FAISS index from GitHub if not available locally."""
     github_url = "https://raw.githubusercontent.com/MrJohn91/alvie-ai-app/main/faiss_index.bin"
-    if not os.path.exists("faiss_index.bin"):  
-        response = requests.get(github_url)
-        if response.status_code == 200:
-            with open("faiss_index.bin", "wb") as file:
-                file.write(response.content)
-
-# ✅ Load FAISS Index Properly
-def load_faiss_index():
-    """Loads FAISS index with proper docstore and ID mappings."""
-    if "faiss_db" in st.session_state:
-        return st.session_state.faiss_db  # ✅ Return FAISS object if already loaded
-
     if not os.path.exists("faiss_index.bin"):
-        download_faiss_index()
+        try:
+            response = requests.get(github_url)
+            if response.status_code == 200:
+                with open("faiss_index.bin", "wb") as file:
+                    file.write(response.content)
+                return True
+            else:
+                return False
+        except Exception as e:
+            st.error(f"Failed to download FAISS index: {e}")
+            return False
+    return True
 
+# Load FAISS Index
+def load_faiss_index():
+    global faiss_db
+    if not os.path.exists("faiss_index.bin"):
+        st.warning("⚠️ FAISS index not found! Downloading from GitHub...")
+        if not download_faiss_index():
+            st.error("❌ FAISS index missing. Please check your GitHub repo.")
+            return False
     try:
         index = faiss.read_index("faiss_index.bin")
         embeddings = OpenAIEmbeddings()
-        
-        # ✅ Ensure docstore is properly initialized
         docstore = InMemoryDocstore({})
-        index_to_docstore_id = {}
-
-        faiss_db = FAISS(
-            embedding_function=embeddings,  # ✅ Fix embedding function issue
-            index=index, 
-            docstore=docstore, 
-            index_to_docstore_id=index_to_docstore_id
-        )
-        st.session_state.faiss_db = faiss_db  # ✅ Store FAISS object properly
-        return faiss_db  # ✅ Return FAISS object
+        faiss_db = FAISS(embedding_function=embeddings, index=index, docstore=docstore, index_to_docstore_id={})
+        return True
     except Exception as e:
         st.error(f"❌ FAISS Loading Failed: {e}")
-        return None
+        return False
 
-# ✅ Retrieve Relevant Context from FAISS
-def get_relevant_context(user_input):
-    """Retrieve relevant context from FAISS"""
-    faiss_db = st.session_state.get("faiss_db", None)
-    if not faiss_db:
-        return "No relevant context found."
-
-    try:
-        retrieved_docs = faiss_db.similarity_search(user_input, k=3)
-        
-        # ✅ Debug: Print FAISS results for verification
-        st.write("🔍 Retrieved FAISS Documents:", [doc.page_content for doc in retrieved_docs])
-
-        if retrieved_docs:
-            return "\n".join([doc.page_content for doc in retrieved_docs])
-        else:
-            return "No relevant context found."
-    except Exception as e:
-        return f"FAISS Error: {e}"
-
-# ✅ Generate AI Response
+# Get AI Response from OpenAI
 def get_openai_response(context, user_input):
-    """Fetches AI response using OpenAI API."""
-    if "No relevant context found." in context:
-        return "I'm sorry, but I couldn't find relevant information in the document."
-
     try:
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that uses document data to answer questions."},
+                {"role": "system", "content": "Use the provided context to answer the user's question."},
                 {"role": "user", "content": f"Context: {context}\n\nQuestion: {user_input}"}
             ]
         )
@@ -105,34 +78,31 @@ def get_openai_response(context, user_input):
     except:
         return "❌ OpenAI API Error."
 
-# ✅ Streamlit UI
+# Streamlit UI
 def main():
     st.set_page_config(page_title="ALVIE - Chat Assistant", page_icon="👨‍⚕️", layout="centered")
-
     st.title("👨‍⚕️ ALVIE - Chat Assistant")
-    st.markdown("_Your personal assistant_")
 
-    # ✅ Load FAISS Index Correctly
-    if "faiss_db" not in st.session_state:
-        st.session_state.faiss_db = load_faiss_index()
+    # Load FAISS on App Start
+    if "faiss_loaded" not in st.session_state:
+        st.session_state.faiss_loaded = load_faiss_index()
 
-    # ✅ Show chat history
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
-
-    # ✅ Chat Interface
+    # Chat Interface
     user_input = st.text_input("💬 Talk to ALVIE:", placeholder="Type here...")
 
     if st.button("Send"):
-        faiss_db = st.session_state.get("faiss_db", None)
-
-        if not faiss_db:
-            st.warning("❌ FAISS is not initialized! Check index file.")
+        if not st.session_state.faiss_loaded:
+            st.warning("❌ Please process a PDF first.")
             return
 
         if user_input:
             with st.spinner("Thinking..."):
-                context = get_relevant_context(user_input)
+                if not faiss_db:
+                    st.error("🚨 FAISS is not initialized! Check index file.")
+                    return
+                
+                retrieved_docs = faiss_db.similarity_search(user_input, k=3)
+                context = "\n".join([doc.page_content for doc in retrieved_docs]) if retrieved_docs else "No relevant context found."
                 ai_response = get_openai_response(context, user_input)
 
                 if ai_response:
@@ -145,20 +115,14 @@ def main():
                         upsert=True
                     )
 
-    # ✅ Display Chat History
+    # Display Chat History
     st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
     for sender, message in st.session_state.chat_history:
-        st.markdown(f"<div class='{'user-message' if sender == 'You' else 'bot-message'}'><strong>{sender}:</strong> {message}</div>", unsafe_allow_html=True)
+        if sender == "You":
+            st.markdown(f"<div class='user-message'><strong>{sender}:</strong> {message}</div>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div class='bot-message'><strong>Alvie:</strong> {message}</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
-
-    # ✅ User Rating Feedback
-    if st.session_state.chat_history:
-        st.header("📝 Rate the Response")
-        rating = st.radio("How satisfied are you with ALVIE's response?", ["⭐", "⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐⭐"])
-
-        if st.button("Submit Rating"):
-            feedback_col.insert_one({"session_id": st.session_state.session_id, "rating": rating, "timestamp": datetime.datetime.now()})
-            st.success("Thank you for your feedback!")
 
 if __name__ == "__main__":
     main()
