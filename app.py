@@ -8,6 +8,7 @@ import datetime
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.docstore.in_memory import InMemoryDocstore
+from langchain_core.documents import Document  # ✅ Fix Missing Import
 from openai import OpenAI
 
 # ✅ Load API Keys
@@ -28,6 +29,7 @@ if "session_id" not in st.session_state:
 
 # ✅ Function to Download FAISS Index
 def download_faiss_index():
+    """Downloads FAISS index from GitHub if not available locally."""
     github_url = "https://raw.githubusercontent.com/MrJohn91/alvie-ai-app/main/faiss_index.bin"
     if not os.path.exists("faiss_index.bin"):  
         response = requests.get(github_url)
@@ -35,7 +37,7 @@ def download_faiss_index():
             with open("faiss_index.bin", "wb") as file:
                 file.write(response.content)
 
-# ✅ Function to Load FAISS Index Correctly
+# ✅ Function to Load FAISS Index Properly
 def load_faiss_index():
     """Ensures FAISS has a proper docstore to avoid KeyError."""
     if "faiss_db" in st.session_state:
