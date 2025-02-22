@@ -9,7 +9,7 @@ import numpy as np
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.docstore.in_memory import InMemoryDocstore
-from langchain_core.documents import Document  # ✅ Ensure Correct Import
+from langchain_core.documents import Document  # ✅ Correct Import
 from openai import OpenAI
 
 # ✅ Load API Keys
@@ -28,7 +28,7 @@ except pymongo.errors.ServerSelectionTimeoutError:
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
-# ✅ Function to Download FAISS Index from GitHub
+# ✅ Download FAISS Index from GitHub
 def download_faiss_index():
     """Downloads FAISS index from GitHub if not available locally."""
     github_url = "https://raw.githubusercontent.com/MrJohn91/alvie-ai-app/main/faiss_index.bin"
@@ -38,7 +38,7 @@ def download_faiss_index():
             with open("faiss_index.bin", "wb") as file:
                 file.write(response.content)
 
-# ✅ Function to Load FAISS Index Properly
+# ✅ Load FAISS Index Properly
 def load_faiss_index():
     """Loads FAISS index with proper docstore and ID mappings."""
     if "faiss_db" in st.session_state:
@@ -51,7 +51,7 @@ def load_faiss_index():
         index = faiss.read_index("faiss_index.bin")
         embeddings = OpenAIEmbeddings()
         
-        # ✅ Ensure docstore and index mappings are properly initialized
+        # ✅ Ensure docstore is properly initialized
         docstore = InMemoryDocstore({})
         index_to_docstore_id = {}
 
@@ -67,7 +67,7 @@ def load_faiss_index():
         st.error(f"❌ FAISS Loading Failed: {e}")
         return None
 
-# ✅ Function to Retrieve Relevant Context from FAISS
+# ✅ Retrieve Relevant Context from FAISS
 def get_relevant_context(user_input):
     """Retrieve relevant context from FAISS"""
     faiss_db = st.session_state.get("faiss_db", None)
@@ -76,6 +76,10 @@ def get_relevant_context(user_input):
 
     try:
         retrieved_docs = faiss_db.similarity_search(user_input, k=3)
+        
+        # ✅ Debug: Print FAISS results for verification
+        st.write("🔍 Retrieved FAISS Documents:", [doc.page_content for doc in retrieved_docs])
+
         if retrieved_docs:
             return "\n".join([doc.page_content for doc in retrieved_docs])
         else:
@@ -83,9 +87,12 @@ def get_relevant_context(user_input):
     except Exception as e:
         return f"FAISS Error: {e}"
 
-# ✅ Function to Get AI Response
+# ✅ Generate AI Response
 def get_openai_response(context, user_input):
     """Fetches AI response using OpenAI API."""
+    if "No relevant context found." in context:
+        return "I'm sorry, but I couldn't find relevant information in the document."
+
     try:
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
