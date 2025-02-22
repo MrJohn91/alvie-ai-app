@@ -70,8 +70,9 @@ def get_openai_response(context, user_input):
             ]
         )
         return response.choices[0].message.content
-    except:
-        return "OpenAI API Error."
+    except Exception as e:
+        st.error(f"❌ OpenAI API Error: {e}")
+        return None
 
 # ✅ Streamlit UI
 def main():
@@ -94,26 +95,29 @@ def main():
     if st.button("Send"):
         faiss_db = st.session_state.faiss_db  # ✅ Get FAISS object
 
-        if not faiss_db:
+        if faiss_db is None:
             st.warning("❌ FAISS is not initialized! Check index file.")
             return
 
         if user_input:
             with st.spinner("Thinking..."):
-                retrieved_docs = faiss_db.similarity_search(user_input, k=3)
-                context = "\n".join([doc.page_content for doc in retrieved_docs]) if retrieved_docs else "No relevant context found."
+                try:
+                    retrieved_docs = faiss_db.similarity_search(user_input, k=3)
+                    context = "\n".join([doc.page_content for doc in retrieved_docs]) if retrieved_docs else "No relevant context found."
 
-                ai_response = get_openai_response(context, user_input)
+                    ai_response = get_openai_response(context, user_input)
 
-                if ai_response:
-                    st.session_state.chat_history.append(("You", user_input))
-                    st.session_state.chat_history.append(("Alvie", ai_response))
+                    if ai_response:
+                        st.session_state.chat_history.append(("You", user_input))
+                        st.session_state.chat_history.append(("Alvie", ai_response))
 
-                    conversationcol.update_one(
-                        {"session_id": st.session_state.session_id},
-                        {"$push": {"conversation": [user_input, ai_response]}},
-                        upsert=True
-                    )
+                        conversationcol.update_one(
+                            {"session_id": st.session_state.session_id},
+                            {"$push": {"conversation": [user_input, ai_response]}},
+                            upsert=True
+                        )
+                except Exception as e:
+                    st.error(f"❌ Error during similarity search: {e}")
 
     # ✅ Display Chat History
     st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
