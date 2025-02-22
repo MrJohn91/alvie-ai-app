@@ -7,7 +7,6 @@ import requests
 import datetime
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
-from langchain.docstore.document import Document
 from langchain_community.docstore.in_memory import InMemoryDocstore
 from openai import OpenAI
 
@@ -30,22 +29,30 @@ if "session_id" not in st.session_state:
 # ✅ Function to Download FAISS Index
 def download_faiss_index():
     github_url = "https://raw.githubusercontent.com/MrJohn91/alvie-ai-app/main/faiss_index.bin"
-    if not os.path.exists("faiss_index.bin"):
+    if not os.path.exists("faiss_index.bin"):  
         response = requests.get(github_url)
         if response.status_code == 200:
             with open("faiss_index.bin", "wb") as file:
                 file.write(response.content)
 
-# ✅ Function to Load FAISS Index
+# ✅ Function to Load FAISS Index and Store in `st.session_state`
 def load_faiss_index():
-    global faiss_db
+    if "faiss_db" in st.session_state:
+        return True  # FAISS is already loaded
+
     if not os.path.exists("faiss_index.bin"):
         download_faiss_index()
+
     try:
         index = faiss.read_index("faiss_index.bin")
         embeddings = OpenAIEmbeddings()
         docstore = InMemoryDocstore({})
-        faiss_db = FAISS(embedding_function=embeddings.embed_query, index=index, docstore=docstore, index_to_docstore_id={})
+        st.session_state.faiss_db = FAISS(
+            embedding_function=embeddings.embed_query, 
+            index=index, 
+            docstore=docstore, 
+            index_to_docstore_id={}
+        )
         return True
     except:
         return False
@@ -80,13 +87,13 @@ def main():
     user_input = st.text_input("💬 Talk to ALVIE:", placeholder="Type your message here...")
 
     if st.button("Send"):
-        if not st.session_state.faiss_db:
+        if "faiss_db" not in st.session_state or not st.session_state.faiss_db:
             st.warning("❌ FAISS is not initialized! Check index file.")
             return
 
         if user_input:
             with st.spinner("Thinking..."):
-                retrieved_docs = faiss_db.similarity_search(user_input, k=3) if "faiss_db" in st.session_state else []
+                retrieved_docs = st.session_state.faiss_db.similarity_search(user_input, k=3)
                 context = "\n".join([doc.page_content for doc in retrieved_docs]) if retrieved_docs else "No relevant context found."
 
                 ai_response = get_openai_response(context, user_input)
