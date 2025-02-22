@@ -94,7 +94,7 @@ def get_openai_response(context, user_input):
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that uses document data to answer questions."},
+                {"role": "system", "content": "You must answer based only on the provided context. If the answer is not in the context, say 'I don't know' instead of guessing."},
                 {"role": "user", "content": f"Context: {context}\n\nQuestion: {user_input}"}
             ]
         )
