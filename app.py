@@ -12,17 +12,17 @@ from langchain.docstore.document import Document
 from langchain_community.docstore.in_memory import InMemoryDocstore
 from openai import OpenAI
 
-# ✅ Load API Keys from Streamlit Secrets
+# Load API Keys from Streamlit Secrets
 openai_client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# ✅ Ensure session state is initialized at the start of the script
+# Ensure session state is initialized at the start of the script
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-# ✅ MongoDB Connection
+#  MongoDB Connection
 try:
     client = pymongo.MongoClient(
         st.secrets["MONGO_URL"], tls=True, tlsAllowInvalidCertificates=True, serverSelectionTimeoutMS=10000
@@ -33,7 +33,7 @@ try:
 except pymongo.errors.ServerSelectionTimeoutError:
     st.error("❌ Could not connect to MongoDB.")
 
-# ✅ AWS S3 Setup for FAISS Index
+#  AWS S3 Setup for FAISS Index
 s3 = boto3.client(
     "s3",
     aws_access_key_id=st.secrets["AWS_ACCESS_KEY"],
@@ -44,10 +44,10 @@ s3 = boto3.client(
 FAISS_S3_BUCKET = "ai-document-storage"
 FAISS_S3_KEY = "faiss_index.bin"
 
-# ✅ Global FAISS database
+#  Global FAISS database
 faiss_db = None
 
-# ✅ Function to Download FAISS Index from S3
+#  Function to Download FAISS Index from S3
 def download_faiss_from_s3():
     """Downloads FAISS index from S3 if not available locally."""
     if os.path.exists("faiss_index.bin"):
@@ -60,7 +60,7 @@ def download_faiss_from_s3():
         st.error(f"❌ Failed to download FAISS index from S3: {e}")
         return False
 
-# ✅ Function to Load FAISS Index
+# Function to Load FAISS Index
 def load_faiss_index():
     """Loads FAISS index from a file after downloading from S3."""
     global faiss_db
@@ -79,7 +79,7 @@ def load_faiss_index():
         st.error(f"❌ FAISS Loading Failed: {e}")
         return False
 
-# ✅ Function to Retrieve Relevant Context from FAISS
+#  Function to Retrieve Relevant Context from FAISS
 def get_relevant_context(user_input):
     """Retrieve relevant context from FAISS"""
     if faiss_db:
@@ -87,7 +87,7 @@ def get_relevant_context(user_input):
         return "\n".join([doc.page_content for doc in retrieved_docs]) if retrieved_docs else "No relevant context found."
     return "No relevant context found."
 
-# ✅ Function to Get AI Response
+#  Function to Get AI Response
 def get_openai_response(context, user_input):
     """Fetches AI response using OpenAI API."""
     try:
@@ -102,11 +102,11 @@ def get_openai_response(context, user_input):
     except Exception:
         return "❌ OpenAI API Error."
 
-# ✅ Streamlit UI
+#  Streamlit UI
 def main():
     st.set_page_config(page_title="ALVIE - Chat Assistant", page_icon="👨‍⚕️", layout="centered")
 
-    # ✅ Custom Styling for Chat UI
+    #  Custom Styling for Chat UI
     st.markdown("""
         <style>
             body { background-color: #f8f9fa; }
@@ -147,11 +147,11 @@ def main():
     st.title("👨‍⚕️ ALVIE - Chat Assistant")
     st.markdown("_Your personal assistant_")
 
-    # ✅ Load FAISS index silently
+    #  Load FAISS index silently
     if "faiss_loaded" not in st.session_state:
         st.session_state.faiss_loaded = load_faiss_index()
 
-    # ✅ Chat Interface
+    #  Chat Interface
     user_input = st.text_input("💬 Talk to ALVIE:", placeholder="Type here...")
 
     if st.button("Send"):
@@ -164,14 +164,14 @@ def main():
                     st.session_state.chat_history.append(("You", user_input))
                     st.session_state.chat_history.append(("ALVIE", ai_response))
 
-                    # ✅ Store conversation in MongoDB
+                    #  Store conversation in MongoDB
                     conversationcol.update_one(
                         {"session_id": st.session_state.session_id},
                         {"$push": {"conversation": [user_input, ai_response]}},
                         upsert=True
                     )
 
-    # ✅ Display chat history
+    #  Display chat history
     st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
     for sender, message in st.session_state.chat_history:
         if sender == "You":
@@ -180,7 +180,7 @@ def main():
             st.markdown(f"<div class='bot-message'><strong>{sender}:</strong> {message}</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # ✅ User Rating Feedback (Stored in MongoDB)
+    #  User Rating Feedback (Stored in MongoDB)
     if st.session_state.chat_history:
         st.header("📝 Rate the Response")
         rating = st.radio("How satisfied are you with ALVIE's response?", ["⭐", "⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐⭐"])
