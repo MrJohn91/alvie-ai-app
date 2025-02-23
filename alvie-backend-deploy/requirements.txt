@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pymongo
+boto3
+python-dotenv
+openai
+langchain
+faiss-cpu
+pymupdf
