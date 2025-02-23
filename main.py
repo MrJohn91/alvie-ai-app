@@ -3,6 +3,7 @@ import openai
 import uuid
 import io
 import faiss
+import json
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -55,8 +56,12 @@ def extract_text_from_s3(bucket_name, s3_key):
     """Reads a PDF from S3 and extracts text."""
     try:
         obj = s3.get_object(Bucket=bucket_name, Key=s3_key)
+        print("✅ Successfully downloaded PDF from S3.")
         doc = fitz.open(stream=io.BytesIO(obj["Body"].read()), filetype="pdf")
-        return [page.get_text("text") for page in doc]
+        text_data = [page.get_text("text") for page in doc]
+        print(f"✅ Extracted {len(text_data)} pages of text from the PDF.")
+        print("Sample text from the first page:", text_data[0][:500])  # Print first 500 characters
+        return text_data
     except Exception as e:
         print(f"❌ PDF Processing Error: {e}")
         return None
@@ -66,21 +71,49 @@ def store_text_in_faiss(text_data):
     """Splits text into chunks, converts them into embeddings, and stores in FAISS."""
     global faiss_db
     try:
-        # Split text into chunks for better indexing
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-        docs = text_splitter.create_documents(text_data)
+        # Check if text_data is empty
+        if not text_data:
+            print("❌ No text extracted from the PDF. Check S3 and PDF contents.")
+            return False
+
+        # Print a sample of the extracted text
+        print("✅ Extracted text sample:", text_data[:500])  # Print first 500 characters
+
+        # Enhanced text splitter
+        text_splitter = RecursiveCharacterTextSplitter(
+            separators=["\n# ", "\n## ", "\n### ", "\n\n", "\n", " ", ""],
+            chunk_size=1000,  # Increased chunk size for better context
+            chunk_overlap=200,  # Increased overlap for better context
+            length_function=len,
+            is_separator_regex=False
+        )
+
+        # Join all pages into one text if it's a list
+        if isinstance(text_data, list):
+            text_data = "\n\n".join(text_data)
+
+        # Print how many characters we are processing
+        print(f"Processing {len(text_data)} characters from the PDF")
+
+        # Create chunks
+        chunks = text_splitter.create_documents([text_data])
+        print(f"✅ Created {len(chunks)} text chunks")
 
         # Use OpenAI embeddings
         embeddings = OpenAIEmbeddings()
 
-        # Create a new FAISS index based on the documents
-        faiss_db = FAISS.from_documents(docs, embeddings)
+        # Print FAISS storage details
+        print(f"✅ Storing {len(chunks)} text chunks into FAISS")
 
-        # Save FAISS index for persistence (overwrite the old index)
+        # Create FAISS index
+        faiss_db = FAISS.from_documents(chunks, embeddings)
+
+        # Save the FAISS index
         faiss.write_index(faiss_db.index, "faiss_index.bin")
 
         print("✅ FAISS storage successful!")
         return True
+
     except Exception as e:
         print(f"❌ FAISS Storage Error: {e}")
         return False
@@ -135,8 +168,8 @@ app = FastAPI(lifespan=lifespan)
 async def process_pdf():
     """Extracts text from the S3 PDF, stores it in FAISS, and rebuilds the index."""
     global faiss_db
-    bucket_name = "ai-document-storage"  # S3 bucket name
-    s3_key = "ai_document.pdf"  # Updated document path
+    bucket_name = "ai-document-storage"  
+    s3_key = "ai_document.pdf"  
 
     # Fetch the document from S3 and extract its text
     pdf_text = extract_text_from_s3(bucket_name, s3_key)
@@ -169,14 +202,17 @@ async def chat(chat: ChatMessage):
 
     # Generate AI Response via OpenAI API Call
     try:
-        response = openai.chat.completions.create(  # Use the chat/completions endpoint
+        response = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "Use the provided context to answer the user's question."},
-                {"role": "user", "content": f"Context: {context}\n\nQuestion: {chat.user_input}"}
-            ]
+                {"role": "system", "content": """You are an AI assistant for Psymeon's ALVIE app. 
+                Answer questions based on the provided context. If the context doesn't contain enough 
+                information to answer accurately, say so. Use markdown formatting for better readability."""},
+                {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {chat.user_input}"}
+            ],
+            temperature=0.7  # Adjust for creativity and accuracy
         )
-        ai_response = response.choices[0].message.content  # Access the response
+        ai_response = response.choices[0].message.content
     except Exception as e:
         print(f"❌ OpenAI API Error: {e}")
         return JSONResponse({"error": "Failed to generate AI response"}, status_code=500)
