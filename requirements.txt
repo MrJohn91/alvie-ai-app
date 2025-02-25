@@ -10,3 +10,4 @@ fitz
 langchain-community
 langchain-openai
 PyMuPDF
+uvicorn[standard]
