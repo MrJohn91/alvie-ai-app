@@ -1,5 +1,5 @@
-import os
 import openai
+import os
 import uuid
 import io
 import faiss
@@ -168,8 +168,8 @@ app = FastAPI(lifespan=lifespan)
 async def process_pdf():
     """Extracts text from the S3 PDF, stores it in FAISS, and rebuilds the index."""
     global faiss_db
-    bucket_name = "ai-document-storage"  
-    s3_key = "ai_document.pdf"  
+    bucket_name = "ai-document-storage"  # S3 bucket name
+    s3_key = "ai_document.pdf"  # Updated document path
 
     # Fetch the document from S3 and extract its text
     pdf_text = extract_text_from_s3(bucket_name, s3_key)
@@ -197,22 +197,26 @@ async def chat(chat: ChatMessage):
     chat_history = conversationcol.find_one({"session_id": session_id}) or {"conversation": []}
     
     # Search FAISS for relevant text
-    retrieved_docs = faiss_db.similarity_search(chat.user_input, k=3)
+    retrieved_docs = faiss_db.similarity_search(chat.user_input, k=5)  # Increase k to 5 or higher
     context = "\n".join([doc.page_content for doc in retrieved_docs]) if retrieved_docs else "No relevant context found."
 
     # Generate AI Response via OpenAI API Call
     try:
-        response = openai.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": """You are an AI assistant for Psymeon's ALVIE app. 
-                Answer questions based on the provided context. If the context doesn't contain enough 
-                information to answer accurately, say so. Use markdown formatting for better readability."""},
-                {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {chat.user_input}"}
-            ],
-            temperature=0.7  # Adjust for creativity and accuracy
-        )
-        ai_response = response.choices[0].message.content
+        if not retrieved_docs:
+            ai_response = "I don't have enough information to answer that question."
+        else:
+            response = openai.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": """You are an AI assistant for Psymeon's ALVIE app. 
+                    Answer questions **only** based on the provided context. If the context doesn't contain enough 
+                    information to answer accurately, say, "I don't have enough information to answer that question." 
+                    Use markdown formatting for better readability."""},
+                    {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {chat.user_input}"}
+                ],
+                temperature=0.7  # Adjust for creativity vs. accuracy
+            )
+            ai_response = response.choices[0].message.content
     except Exception as e:
         print(f"❌ OpenAI API Error: {e}")
         return JSONResponse({"error": "Failed to generate AI response"}, status_code=500)
