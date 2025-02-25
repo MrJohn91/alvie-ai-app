@@ -1,112 +1,46 @@
 import streamlit as st
 import os
 import uuid
-import pymongo
-import faiss
 import requests
 import datetime
-import boto3
-from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings
-from langchain.docstore.document import Document
-from langchain_community.docstore.in_memory import InMemoryDocstore
-from openai import OpenAI
+import pymongo
+from dotenv import load_dotenv
 
-# Load API Keys from Streamlit Secrets
-openai_client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+# Load environment variables
+load_dotenv()
 
-# Ensure session state is initialized at the start of the script
+# Backend API URL
+BACKEND_URL = "https://alvie-backend.onrender.com"  
+
+# MongoDB setup (for feedback)
+client = pymongo.MongoClient(os.getenv("MONGO_URL"))
+db = client["chat_with_doc"]
+conversationcol = db["chat-history"]  # Define conversationcol
+feedback_col = db["feedback"]
+
+# Session handling
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-
-#  MongoDB Connection
-try:
-    client = pymongo.MongoClient(
-        st.secrets["MONGO_URL"], tls=True, tlsAllowInvalidCertificates=True, serverSelectionTimeoutMS=10000
-    )
-    db = client["chat_with_doc"]
-    conversationcol = db["chat-history"]
-    feedback_col = db["feedback"]
-except pymongo.errors.ServerSelectionTimeoutError:
-    st.error("❌ Could not connect to MongoDB.")
-
-#  AWS S3 Setup for FAISS Index
-s3 = boto3.client(
-    "s3",
-    aws_access_key_id=st.secrets["AWS_ACCESS_KEY"],
-    aws_secret_access_key=st.secrets["AWS_SECRET_KEY"],
-    region_name="us-east-1",
-)
-
-FAISS_S3_BUCKET = "ai-document-storage"
-FAISS_S3_KEY = "faiss_index.bin"
-
-#  Global FAISS database
-faiss_db = None
-
-#  Function to Download FAISS Index from S3
-def download_faiss_from_s3():
-    """Downloads FAISS index from S3 if not available locally."""
-    if os.path.exists("faiss_index.bin"):
-        return True  # Already downloaded
-
+# Function to Call Backend API
+def call_backend_api(endpoint, data=None):
+    """Helper function to call the backend API."""
     try:
-        s3.download_file(FAISS_S3_BUCKET, FAISS_S3_KEY, "faiss_index.bin")
-        return True
-    except Exception as e:
-        st.error(f"❌ Failed to download FAISS index from S3: {e}")
-        return False
+        if data:
+            response = requests.post(f"{BACKEND_URL}{endpoint}", json=data)
+        else:
+            response = requests.post(f"{BACKEND_URL}{endpoint}")
+        response.raise_for_status()  # Raise an error for bad responses (4xx, 5xx)
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"❌ Failed to call backend API: {e}")
+        return None
 
-# Function to Load FAISS Index
-def load_faiss_index():
-    """Loads FAISS index from a file after downloading from S3."""
-    global faiss_db
-
-    if not os.path.exists("faiss_index.bin"):
-        if not download_faiss_from_s3():
-            return False
-
-    try:
-        index = faiss.read_index("faiss_index.bin")
-        embeddings = OpenAIEmbeddings()
-        docstore = InMemoryDocstore({})
-        faiss_db = FAISS(embedding_function=embeddings, index=index, docstore=docstore, index_to_docstore_id={})
-        return True
-    except Exception as e:
-        st.error(f"❌ FAISS Loading Failed: {e}")
-        return False
-
-#  Function to Retrieve Relevant Context from FAISS
-def get_relevant_context(user_input):
-    """Retrieve relevant context from FAISS"""
-    if faiss_db:
-        retrieved_docs = faiss_db.similarity_search(user_input, k=3)
-        return "\n".join([doc.page_content for doc in retrieved_docs]) if retrieved_docs else "No relevant context found."
-    return "No relevant context found."
-
-#  Function to Get AI Response
-def get_openai_response(context, user_input):
-    """Fetches AI response using OpenAI API."""
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that uses document data to answer questions."},
-                {"role": "user", "content": f"Context: {context}\n\nQuestion: {user_input}"}
-            ]
-        )
-        return response.choices[0].message.content
-    except Exception:
-        return "❌ OpenAI API Error."
-
-#  Streamlit UI
+# Streamlit UI
 def main():
     st.set_page_config(page_title="ALVIE - Chat Assistant", page_icon="👨‍⚕️", layout="centered")
 
-    #  Custom Styling for Chat UI
+    # Custom Styling for Chat UI
     st.markdown("""
         <style>
             body { background-color: #f8f9fa; }
@@ -147,31 +81,51 @@ def main():
     st.title("👨‍⚕️ ALVIE - Chat Assistant")
     st.markdown("_Your personal assistant_")
 
-    #  Load FAISS index silently
-    if "faiss_loaded" not in st.session_state:
-        st.session_state.faiss_loaded = load_faiss_index()
+    # Automatically process PDF when the app starts (silently)
+    if "pdf_processed" not in st.session_state:
+        response = call_backend_api("/process-pdf")
+        if response and "message" in response:
+            st.session_state.pdf_processed = True
+        else:
+            st.session_state.pdf_processed = False
 
-    #  Chat Interface
+    # Show chat history
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
+    # Chat Interface
     user_input = st.text_input("💬 Talk to ALVIE:", placeholder="Type here...")
 
     if st.button("Send"):
         if user_input:
             with st.spinner("Thinking..."):
-                context = get_relevant_context(user_input)
-                ai_response = get_openai_response(context, user_input)
+                # Call the backend /chat endpoint
+                response = call_backend_api("/chat", {
+                    "user_input": user_input,
+                    "data_source": "pdf",
+                    "session_id": st.session_state.session_id
+                })
 
-                if ai_response:
+                if response and "response" in response:
+                    # Remove "Question:" and "Answer:" labels from the response
+                    ai_response = response["response"]
+                    if "Question:" in ai_response and "Answer:" in ai_response:
+                        # Extract only the answer part
+                        ai_response = ai_response.split("Answer:")[1].strip()
+
                     st.session_state.chat_history.append(("You", user_input))
                     st.session_state.chat_history.append(("ALVIE", ai_response))
 
-                    #  Store conversation in MongoDB
+                    # Store chat history in MongoDB (optional)
                     conversationcol.update_one(
                         {"session_id": st.session_state.session_id},
                         {"$push": {"conversation": [user_input, ai_response]}},
                         upsert=True
                     )
+                else:
+                    st.error("Failed to get a response from the backend.")
 
-    #  Display chat history
+    # Display chat history
     st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
     for sender, message in st.session_state.chat_history:
         if sender == "You":
@@ -180,7 +134,7 @@ def main():
             st.markdown(f"<div class='bot-message'><strong>{sender}:</strong> {message}</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    #  User Rating Feedback (Stored in MongoDB)
+    # User Rating Feedback (Stored in MongoDB)
     if st.session_state.chat_history:
         st.header("📝 Rate the Response")
         rating = st.radio("How satisfied are you with ALVIE's response?", ["⭐", "⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐⭐"])
