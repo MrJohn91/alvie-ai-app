@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Backend API URL
-BACKEND_URL = "https://alvie-backend.onrender.com"  # Replace with your live backend URL
+BACKEND_URL = "https://alvie-backend.onrender.com"  
 
 # MongoDB setup (for feedback)
 try:
