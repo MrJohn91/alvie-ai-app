@@ -1,4 +1,3 @@
-import openai
 import os
 import uuid
 import io
@@ -13,7 +12,8 @@ from pydantic import BaseModel
 import pymongo
 import boto3
 import fitz  # PyMuPDF for PDFs
-from langchain_openai import OpenAIEmbeddings
+import requests
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
@@ -38,9 +38,6 @@ feedback_col = db["feedback"]
 
 # AWS S3 Client
 s3 = boto3.client("s3")
-
-# OpenAI API Key
-openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Global FAISS database
 faiss_db = None
@@ -99,8 +96,8 @@ def store_text_in_faiss(text_data):
         chunks = text_splitter.create_documents([text_data])
         print(f"✅ Created {len(chunks)} text chunks")
 
-        # Use OpenAI embeddings
-        embeddings = OpenAIEmbeddings()
+        # Use HuggingFace embeddings
+        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
         # Print FAISS storage details
         print(f"✅ Storing {len(chunks)} text chunks into FAISS")
@@ -129,7 +126,7 @@ def load_faiss_index():
         
         # Load the FAISS index from the file
         index = faiss.read_index("faiss_index.bin")
-        embeddings = OpenAIEmbeddings()
+        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
         
         # Initialize the docstore and index_to_docstore_id
         documents = [Document(page_content="dummy")]  # Dummy document for mock example
@@ -183,6 +180,9 @@ async def process_pdf():
     # Notify the user that the process was successful
     return JSONResponse({"message": "✅ PDF processed and FAISS index updated successfully!"})
 
+# Ollama URL
+OLLAMA_URL = "http://localhost:11434/api/generate"
+
 # API Endpoint: Chat Using FAISS Search
 @app.post("/chat")
 async def chat(chat: ChatMessage):
@@ -200,25 +200,30 @@ async def chat(chat: ChatMessage):
     retrieved_docs = faiss_db.similarity_search(chat.user_input, k=5)  # Increase k to 5 or higher
     context = "\n".join([doc.page_content for doc in retrieved_docs]) if retrieved_docs else "No relevant context found."
 
-    # Generate AI Response via OpenAI API Call
+    # Generate AI Response via Ollama API Call
     try:
         if not retrieved_docs:
             ai_response = "I don't have enough information to answer that question."
         else:
-            response = openai.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": """You are an AI assistant for Psymeon's ALVIE app. 
-                    Answer questions **only** based on the provided context. If the context doesn't contain enough 
-                    information to answer accurately, say, "I don't have enough information to answer that question." 
-                    Use markdown formatting for better readability."""},
-                    {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {chat.user_input}"}
-                ],
-                temperature=0.7  # Adjust for creativity vs. accuracy
-            )
-            ai_response = response.choices[0].message.content
+            data = {
+                "model": "llama3",
+                "prompt": f"""You are an AI assistant for Psymeon's ALVIE app. 
+                Answer questions **only** based on the provided context. If the context doesn't contain enough 
+                information to answer accurately, say, "I don't have enough information to answer that question." 
+                Use markdown formatting for better readability.
+
+                Context:\n{context}\n\nQuestion: {chat.user_input}""",
+                "stream": False
+            }
+
+            response = requests.post(OLLAMA_URL, json=data)
+            if response.status_code == 200:
+                ai_response = response.json().get("response", "No response generated.")
+            else:
+                print(f"❌ Ollama API Error: {response.status_code} - {response.text}")
+                return JSONResponse({"error": "Failed to generate AI response"}, status_code=500)
     except Exception as e:
-        print(f"❌ OpenAI API Error: {e}")
+        print(f"❌ Ollama API Error: {e}")
         return JSONResponse({"error": "Failed to generate AI response"}, status_code=500)
 
     # Store chat in MongoDB
