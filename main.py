@@ -53,6 +53,39 @@ OLLAMA_URL = os.getenv("OLLAMA_URL")
 if not OLLAMA_URL:
     raise EnvironmentError("❌ OLLAMA_URL is not set in the environment variables.")
 
+def load_faiss_index():
+    """Loads the FAISS index from a file."""
+    global faiss_db  # Use the global faiss_db variable to store the index in memory
+
+    try:
+        if not os.path.exists("faiss_index.bin"):
+            print("❌ FAISS index file not found. Process a PDF first.")
+            return False
+        
+        # Load the FAISS index from the file
+        index = faiss.read_index("faiss_index.bin")
+        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        
+        # Initialize the docstore and index_to_docstore_id with dummy documents (replace as needed)
+        documents = [Document(page_content="dummy")]
+        docstore = InMemoryDocstore({str(i): doc for i, doc in enumerate(documents)})
+        index_to_docstore_id = {str(i): str(i) for i in range(len(documents))}
+        
+        # Reinitialize the FAISS database with the updated index and embeddings function
+        faiss_db = FAISS(
+            embedding_function=embeddings.embed_query,
+            index=index,
+            docstore=docstore,
+            index_to_docstore_id=index_to_docstore_id,
+        )
+
+        print("✅ FAISS index loaded successfully!")
+        return True
+
+    except Exception as e:
+        print(f"❌ Failed to load FAISS index: {e}")
+        return False
+
 @app.post("/chat")
 async def chat(chat: ChatMessage):
     """Retrieves answers from FAISS-stored PDF data and generates a response using Ollama."""
@@ -60,18 +93,15 @@ async def chat(chat: ChatMessage):
 
     # Ensure FAISS index is loaded or return an error if not available
     if not faiss_db:
-        if not load_faiss_index():
+        if not load_faiss_index():  # Ensure this function is defined and accessible
             return JSONResponse({"error": "FAISS index not loaded. Process a PDF first."}, status_code=500)
 
-    # Generate a session ID if not provided and retrieve chat history from MongoDB
     session_id = chat.session_id or str(uuid.uuid4())
     chat_history = conversationcol.find_one({"session_id": session_id}) or {"conversation": []}
 
-    # Search FAISS for relevant text based on user input (retrieve top 5 matches)
     retrieved_docs = faiss_db.similarity_search(chat.user_input, k=5)
     context = "\n".join([doc.page_content for doc in retrieved_docs]) if retrieved_docs else "No relevant context found."
 
-    # Generate AI response via Ollama API call with the retrieved context
     try:
         if not retrieved_docs:
             ai_response = "I don't have enough information to answer that question."
@@ -97,7 +127,6 @@ async def chat(chat: ChatMessage):
         print(f"❌ Ollama API Error: {e}")
         return JSONResponse({"error": "Failed to generate AI response"}, status_code=500)
 
-    # Store conversation in MongoDB (session ID, user input, and AI response)
     conversationcol.update_one(
         {"session_id": session_id}, {"$push": {"conversation": [chat.user_input, ai_response]}}, upsert=True,
     )
