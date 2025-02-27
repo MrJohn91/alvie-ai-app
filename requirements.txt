@@ -10,3 +10,4 @@ pymupdf==1.25.3
 langchain
 langchain-openai
 langchain-community
+sentence-transformers
