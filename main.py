@@ -75,7 +75,6 @@ def extract_text_from_s3(bucket_name, s3_key):
         doc = fitz.open(stream=io.BytesIO(obj["Body"].read()), filetype="pdf")
         text_data = [page.get_text("text") for page in doc]
         print(f"✅ Extracted {len(text_data)} pages of text from the PDF.")
-        print("Sample text from the first page:", text_data[0][:50]) 
         return text_data
     except Exception as e:
         print(f"❌ PDF Processing Error: {e}")
@@ -90,9 +89,6 @@ def store_text_in_faiss(text_data):
         if not text_data:
             print("❌ No text extracted from the PDF. Check S3 and PDF contents.")
             return False
-
-        # Print a sample of the extracted text
-        print("✅ Extracted text sample:", text_data[:50])  
 
         # Enhanced text splitter
         text_splitter = RecursiveCharacterTextSplitter(
