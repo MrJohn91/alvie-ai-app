@@ -187,7 +187,7 @@ async def process_pdf():
     """Extracts text from the S3 PDF, stores it in FAISS, and rebuilds the index."""
     global faiss_db
     bucket_name = "ai-document-storage"  # S3 bucket name
-    s3_key = "ai_document.pdf"  # Updated document path
+    s3_key = "ai_document.pdf"  
 
     # Fetch the document from S3 and extract its text
     pdf_text = extract_text_from_s3(bucket_name, s3_key)
@@ -223,9 +223,9 @@ async def chat(chat: ChatMessage):
         if not retrieved_docs:
             ai_response = "I don't have enough information to answer that question."
         else:
-            # Use Ollama to generate a response
+            # Ollama generate a response
             response = ollama.generate(
-                model="llama3",  # LLaMA 3 model
+                model="llama3",  
                 prompt=f"""You are an AI assistant for Psymeon's ALVIE app. 
                 Answer questions **only** based on the provided context. If the context doesn't contain enough 
                 information to answer accurately, say, "I don't have enough information to answer that question." 
