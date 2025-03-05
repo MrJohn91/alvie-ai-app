@@ -1,7 +1,6 @@
-
 # ALVIE AI Agent
 
-This is a Streamlit-based frontend application that interacts with a FastAPI backend to provide a chat interface powered by AI. The app uses MongoDB for chat history storage and AWS S3 for document processing.
+This is a Streamlit-based frontend application that interacts with a FastAPI backend to provide a chat interface powered by AI. The app uses MongoDB for chat history storage, AWS S3 for document processing, and Ollama for generating AI responses.
 
 ---
 
@@ -9,6 +8,7 @@ This is a Streamlit-based frontend application that interacts with a FastAPI bac
 
 - Python 3.8 or higher
 - Pip (Python package manager)
+- Ollama (for running the AI model locally)
 
 ---
 
@@ -27,18 +27,29 @@ This is a Streamlit-based frontend application that interacts with a FastAPI bac
    pip install -r requirements.txt
    ```
 
-4. **Start the FastAPI backend server:**
+4. **Install and run Ollama:**
+   - Download and install Ollama from the [official GitHub repository](https://github.com/jmorganca/ollama).
+   - Start the Ollama service:
+     ```bash
+     ollama serve
+     ```
+   - Pull the required model (e.g., `llama3`):
+     ```bash
+     ollama pull llama3
+     ```
+
+5. **Start the FastAPI backend server:**
    ```bash
    uvicorn main:app --reload
    ```
 
-5. **Process the PDF (optional):**
+6. **Process the PDF (optional):**
    - In a new terminal, run the following command to process the PDF:
      ```bash
      curl -X POST http://localhost:8000/process-pdf
      ```
 
-6. **Test the backend API (optional):**
+7. **Test the backend API (optional):**
    - You can test the backend API directly using `curl`. For example:
      ```bash
      curl -X POST http://localhost:8000/chat \
@@ -46,27 +57,13 @@ This is a Streamlit-based frontend application that interacts with a FastAPI bac
           -d '{"session_id": "test_session", "user_input": "What is Psymeon and its main product Alvie?", "data_source": "ai_document.pdf"}'
      ```
 
-7. **Run the frontend:**
+8. **Run the frontend:**
    ```bash
    streamlit run app.py
    ```
 
 ---
 
-```
-
----
-
-### Key Features:
-1. **Everything in One File**: No separation or extra sections.
-2. **Includes PDF Processing**: Added the `curl` command to process the PDF.
-3. **Includes API Testing**: Added the `curl` command to test the `/chat` endpoint.
-4. **Clear Instructions**: Follows your exact formatting and structure.
-
----
-
 ### How to Use:
-1. Copy the above content into a new file named `README.md` in the root of your repository.
+1. Copy the updated content into your `README.md` file.
 2. Commit and push the changes to your repository.
-
----
