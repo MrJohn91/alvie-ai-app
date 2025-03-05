@@ -9,42 +9,37 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Backend API URL
-BACKEND_URL = "https://alvie-backend.onrender.com"  # Replace with your live backend URL
+BACKEND_URL = "http://localhost:8000"  
 
-# MongoDB setup (for feedback)
-try:
-    client = pymongo.MongoClient(os.getenv("MONGO_URL"))
-    db = client["chat_with_doc"]
-    conversationcol = db["chat-history"]
-    feedback_col = db["feedback"]
-except Exception as e:
-    st.error(f"❌ Failed to connect to MongoDB: {e}")
+# MongoDB setup (for feedback and chat history)
+client = pymongo.MongoClient(os.getenv("MONGO_URL"))
+db = client["chat_with_doc"]
+conversationcol = db["chat-history"]  # Collection for chat history
+feedback_col = db["feedback"]  # Collection for user feedback
 
-# Initialize session state variables
+# Session handling
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-if "pdf_processed" not in st.session_state:
-    st.session_state.pdf_processed = False
 
-# Function: Call Backend API (with caching)
-@st.cache_data(show_spinner=False)
+# Function to Call Backend API
 def call_backend_api(endpoint, data=None):
     """Helper function to call the backend API."""
     try:
-        url = f"{BACKEND_URL}{endpoint}"
-        response = requests.post(url, json=data) if data else requests.post(url)
-        response.raise_for_status()  # Raise an error for bad responses (4xx, 5xx)
+        if data:
+            response = requests.post(f"{BACKEND_URL}{endpoint}", json=data)
+        else:
+            response = requests.post(f"{BACKEND_URL}{endpoint}")
+        response.raise_for_status()  # Raise an error for bad responses
         return response.json()
     except requests.exceptions.RequestException as e:
         st.error(f"❌ Failed to call backend API: {e}")
         return None
 
-# Function: Apply Custom Styling
-def apply_custom_styling():
-    """Add custom CSS styling for the app."""
+# Streamlit UI
+def main():
+    st.set_page_config(page_title="ALVIE - Chat Assistant", page_icon="👨‍⚕️", layout="centered")
+
+    # Custom Styling for Chat UI
     st.markdown("""
         <style>
             body { background-color: #f8f9fa; }
@@ -82,19 +77,60 @@ def apply_custom_styling():
         </style>
     """, unsafe_allow_html=True)
 
-# Function: Process PDF Automatically
-def process_pdf():
-    """Process the PDF when the app starts."""
-    if not st.session_state.pdf_processed:
-        response = call_backend_api("/process-pdf")
-        if response and "message" in response:
-            st.session_state.pdf_processed = True
-        else:
-            st.error("❌ Failed to process PDF.")
+    st.title("👨‍⚕️ ALVIE - Chat Assistant")
+    st.markdown("_Your personal assistant_")
 
-# Function: Display Chat History
-def display_chat_history():
-    """Render the chat history in the UI."""
+    # Automatically process PDF when the app starts (silently)
+    if "pdf_processed" not in st.session_state:
+        with st.spinner("Processing PDF..."):
+            response = call_backend_api("/process-pdf")
+            if response and "message" in response:
+                st.session_state.pdf_processed = True
+            else:
+                st.session_state.pdf_processed = False
+                st.error("Failed to process the PDF. Please check the backend.")
+
+    # Show chat history
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
+    # Chat Interface
+    user_input = st.text_input("💬 Talk to ALVIE:", placeholder="Type here...")
+
+    if st.button("Send"):
+        if user_input:
+            with st.spinner("Thinking..."):
+                # Call the backend /chat endpoint
+                response = call_backend_api("/chat", {
+                    "user_input": user_input,
+                    "data_source": "pdf",
+                    "session_id": st.session_state.session_id
+                })
+
+                if response and "response" in response:
+                    # Remove "Question:" and "Answer:" labels from the response
+                    ai_response = response["response"]
+                    if "Question:" in ai_response and "Answer:" in ai_response:
+                        # Extract only the answer part
+                        ai_response = ai_response.split("Answer:")[1].strip()
+
+                    # Update chat history
+                    st.session_state.chat_history.append(("You", user_input))
+                    st.session_state.chat_history.append(("ALVIE", ai_response))
+
+                    # Store chat history in MongoDB
+                    try:
+                        conversationcol.update_one(
+                            {"session_id": st.session_state.session_id},
+                            {"$push": {"conversation": [user_input, ai_response]}},
+                            upsert=True
+                        )
+                    except Exception as e:
+                        st.error(f"Failed to store chat history in MongoDB: {e}")
+                else:
+                    st.error("Failed to get a response from the backend.")
+
+    # Display chat history
     st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
     for sender, message in st.session_state.chat_history:
         if sender == "You":
@@ -103,42 +139,7 @@ def display_chat_history():
             st.markdown(f"<div class='bot-message'><strong>{sender}:</strong> {message}</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-# Function: Handle User Input and Chat
-def handle_chat(user_input):
-    """Send user input to backend and update chat history."""
-    with st.spinner("Thinking..."):
-        response = call_backend_api("/chat", {
-            "user_input": user_input,
-            "data_source": "pdf",
-            "session_id": st.session_state.session_id
-        })
-
-        if response and "response" in response:
-            ai_response = response["response"]
-
-            # Extract only the answer part (if applicable)
-            if "Question:" in ai_response and "Answer:" in ai_response:
-                ai_response = ai_response.split("Answer:", maxsplit=1)[1].strip()
-
-            # Update chat history
-            st.session_state.chat_history.append(("You", user_input))
-            st.session_state.chat_history.append(("ALVIE", ai_response))
-
-            # Store chat history in MongoDB (optional)
-            try:
-                conversationcol.update_one(
-                    {"session_id": st.session_state.session_id},
-                    {"$push": {"conversation": [user_input, ai_response]}},
-                    upsert=True
-                )
-            except Exception as e:
-                st.error(f"❌ Failed to save chat history to MongoDB: {e}")
-        else:
-            st.error("❌ Failed to get a response from the backend.")
-
-# Function: Collect User Feedback
-def collect_feedback():
-    """Allow users to rate their experience."""
+    # User Rating Feedback (Stored in MongoDB)
     if st.session_state.chat_history:
         st.header("📝 Rate the Response")
         rating = st.radio("How satisfied are you with ALVIE's response?", ["⭐", "⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐⭐"])
@@ -152,29 +153,7 @@ def collect_feedback():
                 })
                 st.success("Thank you for your feedback!")
             except Exception as e:
-                st.error(f"❌ Failed to save feedback to MongoDB: {e}")
-
-# Main Function
-def main():
-    # Page Configuration and Styling
-    apply_custom_styling()
-    st.title("👨‍⚕️ ALVIE - Chat Assistant")
-    st.markdown("_Your personal assistant_")
-
-    # Process PDF at startup
-    process_pdf()
-
-    # Chat Interface
-    user_input = st.text_input("💬 Talk to ALVIE:", placeholder="Type here...")
-    
-    if st.button("Send") and user_input.strip():
-        handle_chat(user_input)
-
-    # Display Chat History
-    display_chat_history()
-
-    # Collect Feedback
-    collect_feedback()
+                st.error(f"Failed to submit feedback: {e}")
 
 if __name__ == "__main__":
     main()
