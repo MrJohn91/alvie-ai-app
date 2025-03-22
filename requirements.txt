@@ -10,6 +10,6 @@ langchain-community==0.0.20
 sentence-transformers==2.2.2
 pydantic==2.5.2
 requests
-gunicorn==20.1.0
+gunicorn>=23.0.0
 mangum==0.17.0
 ollama
